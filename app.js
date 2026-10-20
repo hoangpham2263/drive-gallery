@@ -49,6 +49,7 @@
   const resetMapZoomBtn = document.getElementById('resetMapZoomBtn');
   const mapPinLocationBtn = document.getElementById('mapPinLocationBtn');
   const layerGoogleBtn = document.getElementById('layerGoogleBtn');
+  const mapLayerSwitch = document.querySelector('.map-layer-switch');
   const layerSatBtn = document.getElementById('layerSatBtn');
   const layerTerrainBtn = document.getElementById('layerTerrainBtn');
   const layerDarkBtn = document.getElementById('layerDarkBtn');
@@ -362,20 +363,13 @@
     return `${make} ${model}`.trim() || 'Camera';
   }
 
-  // --- Travel Map (Google Maps Vietnam Default + Satellite / Terrain / Dark Switcher + Dual Scope) ---
-  const VIETNAM_GEOJSON = {
-    "type": "Feature",
-    "properties": { "name": "Vietnam" },
-    "geometry": {
-      "type": "Polygon",
-      "coordinates": [[[108.05018, 21.55238], [106.715068, 20.696851], [105.881682, 19.75205], [105.662006, 19.058165], [106.426817, 18.004121], [107.361954, 16.697457], [108.269495, 16.079742], [108.877107, 15.276691], [109.33527, 13.426028], [109.200136, 11.666859], [108.36613, 11.008321], [107.220929, 10.364484], [106.405113, 9.53084], [105.158264, 8.59976], [104.795185, 9.241038], [105.076202, 9.918491], [104.334335, 10.486544], [105.199915, 10.88931], [106.24967, 10.961812], [105.810524, 11.567615], [107.491403, 12.337206], [107.614548, 13.535531], [107.382727, 14.202441], [107.564525, 15.202173], [107.312706, 15.908538], [106.556008, 16.604284], [105.925762, 17.485315], [105.094598, 18.666975], [103.896532, 19.265181], [104.183388, 19.624668], [104.822574, 19.886642], [104.435, 20.758733], [103.203861, 20.766562], [102.754896, 21.675137], [102.170436, 22.464753], [102.706992, 22.708795], [103.504515, 22.703757], [104.476858, 22.81915], [105.329209, 23.352063], [105.811247, 22.976892], [106.725403, 22.794268], [106.567273, 22.218205], [107.04342, 21.811899], [108.05018, 21.55238]]]
-    }
-  };
+  // --- Travel Map (Pure SVG Vietnam 64-Province Vector Map + Global Google Maps Switcher) ---
   const VIETNAM_BOUNDS = [[8.18, 102.14], [23.39, 109.46]];
   const VIETNAM_MAX_BOUNDS = [[7.0, 99.5], [25.0, 114.5]];
   let currentMapScope = localStorage.getItem('travel_memories_map_scope') || 'vietnam';
-  let vietnamBorderLayer = null;
-
+  
+  let vnProvincesGeoData = null;
+  let vnProvincesLayer = null;
   let googleStreetLayer = null;
   let googleHybridLayer = null;
   let googleTerrainLayer = null;
@@ -384,6 +378,165 @@
 
   function isLocationInVietnam(lat, lng) {
     return (lat >= 8.0 && lat <= 24.0 && lng >= 102.0 && lng <= 110.5);
+  }
+
+  // Standard ray-casting point in polygon algorithm
+  function pointInPolygon(point, vs) {
+    const x = point[0], y = point[1];
+    let inside = false;
+    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+      const xi = vs[i][0], yi = vs[i][1];
+      const xj = vs[j][0], yj = vs[j][1];
+      const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  // Count photos for a given province using point-in-polygon & smart location matching
+  function getProvincePhotoCount(provinceName, feature) {
+    if (!photos || photos.length === 0) return 0;
+    const pNameNorm = (provinceName || '').toLowerCase().trim();
+    let count = 0;
+
+    photos.forEach((photo) => {
+      const coords = getPhotoLatLng(photo);
+      // 1. Check exact GPS coordinates inside province polygon
+      if (coords && feature && feature.geometry) {
+        const geom = feature.geometry;
+        if (geom.type === 'Polygon') {
+          if (pointInPolygon([coords.lng, coords.lat], geom.coordinates[0])) {
+            count++;
+            return;
+          }
+        } else if (geom.type === 'MultiPolygon') {
+          for (let poly of geom.coordinates) {
+            if (pointInPolygon([coords.lng, coords.lat], poly[0])) {
+              count++;
+              return;
+            }
+          }
+        }
+      }
+
+      // 2. Fallback check photo location string
+      if (photo.location) {
+        const locNorm = photo.location.toLowerCase();
+        if (locNorm.includes(pNameNorm)) {
+          count++;
+        } else if (pNameNorm.includes('hồ chí minh') && (locNorm.includes('sài gòn') || locNorm.includes('tp.hcm') || locNorm.includes('tphcm'))) {
+          count++;
+        } else if (pNameNorm.includes('đà nẵng') && locNorm.includes('da nang')) {
+          count++;
+        } else if (pNameNorm.includes('hà nội') && (locNorm.includes('ha noi') || locNorm.includes('hanoi'))) {
+          count++;
+        }
+      }
+    });
+
+    return count;
+  }
+
+  async function loadVietnamProvincesGeo() {
+    if (vnProvincesGeoData) return vnProvincesGeoData;
+    try {
+      const res = await fetch('vietnam-provinces.json?v=20261020_15');
+      if (!res.ok) throw new Error('Không thể tải file GeoJSON bản đồ');
+      vnProvincesGeoData = await res.json();
+      return vnProvincesGeoData;
+    } catch (e) {
+      console.warn('Lỗi tải GeoJSON tỉnh thành Việt Nam:', e);
+      return null;
+    }
+  }
+
+  // Render pure SVG Vietnam 64-province vector map (Gody travel scratch-map style)
+  async function renderVietnamVectorMap() {
+    if (!travelMap) return;
+    const geoData = await loadVietnamProvincesGeo();
+    if (!geoData) return;
+
+    if (vnProvincesLayer && travelMap.hasLayer(vnProvincesLayer)) {
+      travelMap.removeLayer(vnProvincesLayer);
+    }
+
+    let visitedCount = 0;
+    const totalCount = geoData.features.length;
+
+    geoData.features.forEach((f) => {
+      if (getProvincePhotoCount(f.properties.name, f) > 0) {
+        visitedCount++;
+      }
+    });
+
+    vnProvincesLayer = L.geoJSON(geoData, {
+      style: (feature) => {
+        const count = getProvincePhotoCount(feature.properties.name, feature);
+        const isVisited = count > 0;
+        return {
+          fillColor: isVisited ? '#ff4d4f' : '#ffffff',
+          fillOpacity: isVisited ? 0.92 : 0.96,
+          color: isVisited ? '#d9363e' : '#cbd5e1',
+          weight: isVisited ? 1.6 : 1,
+          dashArray: null
+        };
+      },
+      onEachFeature: (feature, layer) => {
+        const pName = feature.properties.name;
+        const count = getProvincePhotoCount(pName, feature);
+
+        layer.bindTooltip(`
+          <div style="font-weight:600;font-size:13px;color:#fff;">🇻🇳 ${pName}</div>
+          <div style="font-size:11px;color:#cbd5e1;margin-top:2px;">
+            ${count > 0 ? `📸 ${count} ảnh kỷ niệm` : 'Chưa có ảnh check-in'}
+          </div>
+        `, {
+          className: 'vn-province-tooltip',
+          sticky: true,
+          direction: 'top'
+        });
+
+        layer.on({
+          mouseover: (e) => {
+            const l = e.target;
+            const c = getProvincePhotoCount(pName, feature);
+            l.setStyle({
+              fillColor: c > 0 ? '#ff1744' : '#f8fafc',
+              fillOpacity: 1,
+              weight: 2,
+              color: '#d63031'
+            });
+            l.bringToFront();
+          },
+          mouseout: (e) => {
+            if (vnProvincesLayer) vnProvincesLayer.resetStyle(e.target);
+          },
+          click: (e) => {
+            if (isMapPinningMode && activePickerPhoto) {
+              const latlng = e.latlng;
+              assignLocationToPhoto(activePickerPhoto.id, {
+                name: pName,
+                fullName: `${pName}, Việt Nam`,
+                lat: latlng.lat,
+                lng: latlng.lng
+              });
+              cancelMapPinning();
+              return;
+            }
+            travelMap.fitBounds(layer.getBounds(), { padding: [35, 35], maxZoom: 10 });
+          }
+        });
+      }
+    });
+
+    if (currentMapScope === 'vietnam') {
+      vnProvincesLayer.addTo(travelMap);
+      if (markersLayer) markersLayer.bringToFront();
+      if (mapPlacesCount) {
+        const pct = Math.round((visitedCount / totalCount) * 100);
+        mapPlacesCount.textContent = `🇻🇳 ${visitedCount}/${totalCount} tỉnh thành (${pct}%)`;
+      }
+    }
   }
 
   function flyToMapLocation(lat, lng, zoom = 13) {
@@ -399,7 +552,7 @@
     try {
       const isVN = (currentMapScope === 'vietnam');
       travelMap = L.map('travelMap', {
-        center: isVN ? [16.0, 107.0] : [20.0, 10.0],
+        center: isVN ? [16.1, 107.5] : [20.0, 10.0],
         zoom: isVN ? 6 : 2.5,
         minZoom: isVN ? 5.2 : 2,
         maxBounds: isVN ? VIETNAM_MAX_BOUNDS : null,
@@ -408,22 +561,22 @@
         scrollWheelZoom: true
       });
 
-      // 1. Google Maps Vietnam (Standard Street - Crystal clear, official Vietnamese labels & full borders)
-      googleStreetLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&hl=vi&x={x}&y={y}&z={z}', {
+      // 1. Google Maps Vietnam (Standard Street - Ultra-sharp @2x Retina, official Vietnamese labels)
+      googleStreetLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&hl=vi&x={x}&y={y}&z={z}&scale=2', {
         subdomains: ['0', '1', '2', '3'],
         attribution: '&copy; Google Maps',
         maxZoom: 20
       });
 
-      // 2. Google Hybrid (Real Satellite + Sharp Vietnamese roads & place names)
-      googleHybridLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&hl=vi&x={x}&y={y}&z={z}', {
+      // 2. Google Hybrid (Real Satellite + Sharp @2x Retina Vietnamese roads & place names)
+      googleHybridLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&hl=vi&x={x}&y={y}&z={z}&scale=2', {
         subdomains: ['0', '1', '2', '3'],
         attribution: '&copy; Google Maps Vệ tinh',
         maxZoom: 20
       });
 
-      // 3. Google Terrain (Elevation & mountains + Vietnamese labels)
-      googleTerrainLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=p&hl=vi&x={x}&y={y}&z={z}', {
+      // 3. Google Terrain (Elevation & mountains + @2x Retina Vietnamese labels)
+      googleTerrainLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=p&hl=vi&x={x}&y={y}&z={z}&scale=2', {
         subdomains: ['0', '1', '2', '3'],
         attribution: '&copy; Google Maps Địa hình',
         maxZoom: 20
@@ -435,27 +588,6 @@
         className: 'map-tiles-midnight',
         maxZoom: 18
       });
-
-      // Default layer: Google Maps Vietnam (Crystal clear)
-      googleStreetLayer.addTo(travelMap);
-
-      // Vietnam S-Shape Glowing Border Layer
-      vietnamBorderLayer = L.geoJSON(VIETNAM_GEOJSON, {
-        style: {
-          color: '#ff4d4f',
-          weight: 2.2,
-          opacity: 0.85,
-          dashArray: '5, 5',
-          fillColor: '#ff4d4f',
-          fillOpacity: 0.035,
-          className: 'vietnam-border-glow'
-        },
-        interactive: false
-      });
-
-      if (isVN) {
-        vietnamBorderLayer.addTo(travelMap);
-      }
 
       markersLayer = L.layerGroup().addTo(travelMap);
 
@@ -489,34 +621,41 @@
     if (scopeVietnamBtn) scopeVietnamBtn.classList.toggle('active', scope === 'vietnam');
     if (scopeGlobalBtn) scopeGlobalBtn.classList.toggle('active', scope === 'global');
 
-    if (mapPlacesCount) {
-      const gpsPhotos = photos.filter(p => getPhotoLatLng(p) !== null);
-      const vnPhotos = gpsPhotos.filter(p => {
-        const c = getPhotoLatLng(p);
-        return isLocationInVietnam(c.lat, c.lng);
-      });
-      if (scope === 'vietnam') {
-        mapPlacesCount.textContent = `${vnPhotos.length} điểm tại VN`;
-      } else {
-        mapPlacesCount.textContent = `${gpsPhotos.length} điểm toàn cầu`;
-      }
-    }
-
     if (!travelMap) return;
 
     if (scope === 'vietnam') {
+      // 1. Pure SVG Vietnam Mode: Clean vector map, NO Google tiles, NO foreign countries
+      if (travelMapEl) travelMapEl.classList.add('vietnam-mode');
+      if (mapLayerSwitch) mapLayerSwitch.hidden = true;
+
+      // Remove all raster layers
+      [googleStreetLayer, googleHybridLayer, googleTerrainLayer, darkLayer].forEach(layer => {
+        if (layer && travelMap.hasLayer(layer)) travelMap.removeLayer(layer);
+      });
+
       travelMap.options.minZoom = 5.2;
       travelMap.setMaxBounds(VIETNAM_MAX_BOUNDS);
-      if (vietnamBorderLayer && !travelMap.hasLayer(vietnamBorderLayer)) {
-        vietnamBorderLayer.addTo(travelMap);
-      }
-      fitMapToBounds();
+
+      renderVietnamVectorMap();
+      travelMap.setView([16.1, 107.5], 6);
     } else {
-      // Global
+      // 2. Global Mode: Re-enable world raster layers
+      if (travelMapEl) travelMapEl.classList.remove('vietnam-mode');
+      if (mapLayerSwitch) mapLayerSwitch.hidden = false;
+
+      // Remove Vietnam vector layer
+      if (vnProvincesLayer && travelMap.hasLayer(vnProvincesLayer)) {
+        travelMap.removeLayer(vnProvincesLayer);
+      }
+
       travelMap.setMaxBounds(null);
       travelMap.options.minZoom = 2;
-      if (vietnamBorderLayer && travelMap.hasLayer(vietnamBorderLayer)) {
-        travelMap.removeLayer(vietnamBorderLayer);
+
+      switchMapLayer(currentLayerType);
+
+      if (mapPlacesCount) {
+        const gpsPhotos = photos.filter(p => getPhotoLatLng(p) !== null);
+        mapPlacesCount.textContent = `${gpsPhotos.length} điểm toàn cầu`;
       }
       fitMapToBounds();
     }
@@ -566,7 +705,7 @@
       } else if (bounds.length > 1) {
         travelMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
       } else {
-        travelMap.fitBounds(VIETNAM_BOUNDS, { padding: [25, 25] });
+        travelMap.setView([16.1, 107.5], 6);
       }
     } else {
       // Global
@@ -1120,6 +1259,9 @@
     renderGallery();
     renderMapMarkers();
     renderDestinationsDrawer();
+    if (currentMapScope === 'vietnam') {
+      renderVietnamVectorMap();
+    }
     if (currentView === 'timeline') {
       renderTimeline();
     }

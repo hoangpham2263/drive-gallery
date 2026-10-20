@@ -750,6 +750,11 @@ button, select, .ghost, .primary, .outline, .btn-sm {
   z-index: 1;
 }
 
+/* Sharp and crisp map tiles (Retina & High DPI) */
+.travel-map .leaflet-tile {
+  image-rendering: -webkit-optimize-contrast;
+}
+
 /* Midnight Dark OpenStreetMap Tiles with CSS Filter */
 .map-tiles-midnight .leaflet-tile {
   filter: invert(100%) hue-rotate(195deg) brightness(88%) contrast(125%) saturate(70%) !important;
@@ -827,22 +832,38 @@ button, select, .ghost, .primary, .outline, .btn-sm {
   pointer-events: none;
 }
 
-/* Glowing S-Curve border on Leaflet vector path */
+/* Crisp boundary line on Leaflet vector path */
 .vietnam-border-glow {
-  filter: drop-shadow(0 0 8px rgba(255, 77, 79, 0.75));
   stroke-linecap: round;
   stroke-linejoin: round;
-  animation: sCurvePulse 3s ease-in-out infinite alternate;
+  filter: drop-shadow(0 0 2px rgba(230, 57, 70, 0.4));
+/* Pure Vietnam S-Shape Vector Map Mode (Gody-style clean map) */
+.travel-map.vietnam-mode {
+  background: #f1f5f9 !important;
 }
-@keyframes sCurvePulse {
-  0% {
-    stroke-opacity: 0.7;
-    filter: drop-shadow(0 0 5px rgba(255, 77, 79, 0.5));
+@media (prefers-color-scheme: dark) {
+  .travel-map.vietnam-mode {
+    background: #0b1329 !important;
   }
-  100% {
-    stroke-opacity: 1;
-    filter: drop-shadow(0 0 10px rgba(255, 77, 79, 0.85));
-  }
+}
+[data-theme="dark"] .travel-map.vietnam-mode {
+  background: #0b1329 !important;
+}
+
+/* Custom Tooltip for Vietnam Provinces */
+.leaflet-tooltip.vn-province-tooltip {
+  background: rgba(15, 23, 42, 0.92) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 8px !important;
+  padding: 6px 11px !important;
+  font-family: inherit !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35) !important;
+}
+.leaflet-tooltip-top.vn-province-tooltip:before {
+  border-top-color: rgba(15, 23, 42, 0.92) !important;
 }
 
 /* Map Overlay Controls (Top Right) */
@@ -854,6 +875,9 @@ button, select, .ghost, .primary, .outline, .btn-sm {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.map-layer-switch[hidden] {
+  display: none !important;
 }
 .map-layer-switch {
   display: inline-flex;
