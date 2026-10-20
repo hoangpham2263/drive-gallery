@@ -47,11 +47,17 @@
   const travelMapEl = document.getElementById('travelMap');
   const mapPlacesCount = document.getElementById('mapPlacesCount');
   const resetMapZoomBtn = document.getElementById('resetMapZoomBtn');
+  const layerDarkBtn = document.getElementById('layerDarkBtn');
+  const layerSatBtn = document.getElementById('layerSatBtn');
+  const layerStreetBtn = document.getElementById('layerStreetBtn');
   const citiesVisitedCount = document.getElementById('citiesVisitedCount');
   const destinationsList = document.getElementById('destinationsList');
   const timelineContainer = document.getElementById('timelineContainer');
 
-  // Badges & Banner
+  // Badges & Banners
+  const globalDropOverlay = document.getElementById('globalDropOverlay');
+  const noGpsBanner = document.getElementById('noGpsBanner');
+  const quickLocationChips = document.getElementById('quickLocationChips');
   const openDriveFolderBtn = document.getElementById('openDriveFolderBtn');
   const connectionBadge = document.getElementById('connectionBadge');
   const connectionText = document.getElementById('connectionText');
@@ -192,6 +198,23 @@
     }
   ];
 
+  // Popular Vietnam destinations for 1-click GPS assignment
+  const POPULAR_LOCATIONS = [
+    { name: 'Hà Nội', fullName: 'Hoàn Kiếm, Hà Nội, Việt Nam', lat: 21.0285, lng: 105.8542 },
+    { name: 'Đà Nẵng', fullName: 'Hải Châu, Đà Nẵng, Việt Nam', lat: 16.0612, lng: 108.2272 },
+    { name: 'TP. Hồ Chí Minh', fullName: 'Quận 1, TP. Hồ Chí Minh, Việt Nam', lat: 10.7743, lng: 106.7029 },
+    { name: 'Đà Lạt', fullName: 'Đà Lạt, Lâm Đồng, Việt Nam', lat: 11.9404, lng: 108.4583 },
+    { name: 'Phú Quốc', fullName: 'An Thới, Phú Quốc, Kiên Giang, Việt Nam', lat: 10.0538, lng: 104.0326 },
+    { name: 'Hội An', fullName: 'Hội An, Quảng Nam, Việt Nam', lat: 15.8801, lng: 108.3380 },
+    { name: 'Nha Trang', fullName: 'Nha Trang, Khánh Hòa, Việt Nam', lat: 12.2388, lng: 109.1967 },
+    { name: 'Sa Pa', fullName: 'Sa Pa, Lào Cai, Việt Nam', lat: 22.3364, lng: 103.8438 },
+    { name: 'Huế', fullName: 'Huế, Thừa Thiên Huế, Việt Nam', lat: 16.4637, lng: 107.5909 },
+    { name: 'Hải Phòng', fullName: 'Hải Phòng, Việt Nam', lat: 20.8449, lng: 106.6881 },
+    { name: 'Cần Thơ', fullName: 'Ninh Kiều, Cần Thơ, Việt Nam', lat: 10.0452, lng: 105.7469 },
+    { name: 'Quy Nhơn', fullName: 'Quy Nhơn, Bình Định, Việt Nam', lat: 13.7820, lng: 109.2197 },
+    { name: 'Vũng Tàu', fullName: 'Vũng Tàu, Bà Rịa - Vũng Tàu, Việt Nam', lat: 10.3460, lng: 107.0843 }
+  ];
+
   // --- Helper Functions ---
   function showToast(msg) {
     if (!toast) return;
@@ -325,7 +348,12 @@
     return `${make} ${model}`.trim() || 'Camera';
   }
 
-  // --- Travel Map (Leaflet & ESRI Dark Gray - No Watermark, No API Key) ---
+  // --- Travel Map (Leaflet with Midnight Dark / Satellite Switcher) ---
+  let midnightLayer = null;
+  let satLayer = null;
+  let streetLayer = null;
+  let currentLayerType = 'midnight';
+
   function initTravelMap() {
     if (travelMap || !window.L || !travelMapEl) return;
     try {
@@ -336,25 +364,62 @@
         scrollWheelZoom: true
       });
 
-      // ESRI World Dark Gray Base (Clean, fast, no watermark)
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
-        attribution: '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
-        maxZoom: 16
-      }).addTo(travelMap);
+      // 1. Midnight Dark OSM Layer (Deep navy ocean, graphite land, crisp white Vietnamese text, 0 watermark)
+      midnightLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        className: 'map-tiles-midnight',
+        maxZoom: 18
+      });
 
-      // ESRI Reference overlay (Labels & city names)
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
-        attribution: '',
-        maxZoom: 16
-      }).addTo(travelMap);
+      // 2. Satellite Layer (ESRI World Imagery)
+      satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri World Imagery',
+        className: 'map-tiles-satellite',
+        maxZoom: 18
+      });
+
+      // 3. Street Map (Standard Daylight OSM)
+      streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        className: 'map-tiles-street',
+        maxZoom: 18
+      });
+
+      // Default layer: Midnight Dark
+      midnightLayer.addTo(travelMap);
 
       markersLayer = L.layerGroup().addTo(travelMap);
+
+      if (layerDarkBtn) layerDarkBtn.addEventListener('click', () => switchMapLayer('midnight'));
+      if (layerSatBtn) layerSatBtn.addEventListener('click', () => switchMapLayer('sat'));
+      if (layerStreetBtn) layerStreetBtn.addEventListener('click', () => switchMapLayer('street'));
 
       if (resetMapZoomBtn) {
         resetMapZoomBtn.addEventListener('click', fitMapToBounds);
       }
     } catch (e) {
       console.warn('Error initTravelMap', e);
+    }
+  }
+
+  function switchMapLayer(type) {
+    if (!travelMap) return;
+    currentLayerType = type;
+    [layerDarkBtn, layerSatBtn, layerStreetBtn].forEach(btn => btn && btn.classList.remove('active'));
+
+    if (midnightLayer && travelMap.hasLayer(midnightLayer)) travelMap.removeLayer(midnightLayer);
+    if (satLayer && travelMap.hasLayer(satLayer)) travelMap.removeLayer(satLayer);
+    if (streetLayer && travelMap.hasLayer(streetLayer)) travelMap.removeLayer(streetLayer);
+
+    if (type === 'sat' && satLayer) {
+      satLayer.addTo(travelMap);
+      if (layerSatBtn) layerSatBtn.classList.add('active');
+    } else if (type === 'street' && streetLayer) {
+      streetLayer.addTo(travelMap);
+      if (layerStreetBtn) layerStreetBtn.classList.add('active');
+    } else if (midnightLayer) {
+      midnightLayer.addTo(travelMap);
+      if (layerDarkBtn) layerDarkBtn.classList.add('active');
     }
   }
 
@@ -387,13 +452,20 @@
     const bounds = [];
 
     gpsPhotos.forEach((photo) => {
-      // Concentric circles pin marker matching user screenshot
+      // Concentric glowing radar pin marker matching user reference screenshot
       const pinIcon = L.divIcon({
         className: 'map-photo-pin',
-        html: `<div class="pin-ring" title="${photo.title}"><div class="pin-dot"></div></div>`,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
-        popupAnchor: [0, -14]
+        html: `
+          <div class="pin-wrapper" title="${photo.title} (${photo.location || ''})">
+            <div class="pin-pulse"></div>
+            <div class="pin-ring">
+              <div class="pin-dot"></div>
+            </div>
+          </div>
+        `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -16]
       });
 
       const marker = L.marker([photo.gps.lat, photo.gps.lng], { icon: pinIcon });
@@ -440,6 +512,50 @@
     }
   }
 
+  // --- No-GPS Quick Assignment Banner & Handler ---
+  function checkAndRenderNoGpsBanner() {
+    if (!noGpsBanner || !quickLocationChips) return;
+    const photosWithoutGps = photos.filter(p => !p.gps || typeof p.gps.lat !== 'number');
+    if (photosWithoutGps.length === 0) {
+      noGpsBanner.hidden = true;
+      return;
+    }
+
+    noGpsBanner.hidden = false;
+    const targetPhoto = photosWithoutGps[0];
+
+    quickLocationChips.innerHTML = '';
+    POPULAR_LOCATIONS.forEach((loc) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'location-chip-btn';
+      chip.innerHTML = `📍 ${loc.name}`;
+      chip.title = `Ghim ảnh "${targetPhoto.title}" vào ${loc.fullName}`;
+      chip.addEventListener('click', () => {
+        assignLocationToPhoto(targetPhoto.id, loc);
+      });
+      quickLocationChips.appendChild(chip);
+    });
+  }
+
+  function assignLocationToPhoto(photoId, loc) {
+    const photo = photos.find(p => p.id === photoId);
+    if (!photo) return;
+    photo.gps = { lat: loc.lat, lng: loc.lng };
+    photo.location = loc.fullName;
+    if (!accessToken) savePhotos();
+    updateAllViews();
+    showToast(`📍 Đã ghim ảnh vào "${loc.name}"!`);
+    if (travelMap) {
+      switchView('map');
+      travelMap.flyTo([loc.lat, loc.lng], 13, { duration: 1.2 });
+      setTimeout(() => {
+        const marker = markerMap.get(photo.id);
+        if (marker) marker.openPopup();
+      }, 1250);
+    }
+  }
+
   // --- Destinations Drawer (Grouped by place like user screenshot) ---
   function renderDestinationsDrawer() {
     if (!destinationsList) return;
@@ -473,7 +589,7 @@
     }
 
     if (destArray.length === 0) {
-      destinationsList.innerHTML = `<div class="muted small" style="grid-column: 1/-1; padding: 14px 0;">Chưa có điểm đến nào. Hãy tải ảnh có GPS vào để tạo điểm đến kỷ niệm!</div>`;
+      destinationsList.innerHTML = `<div class="muted small" style="grid-column: 1/-1; padding: 14px 0;">Chưa có điểm đến nào. Hãy tải ảnh kỷ niệm vào để tạo điểm đến!</div>`;
       return;
     }
 
@@ -481,7 +597,7 @@
       const coverPhoto = dest.photos[0];
       const hasGps = !!(dest.lat && dest.lng);
       const card = document.createElement('div');
-      card.className = 'destination-card';
+      card.className = hasGps ? 'destination-card' : 'destination-card no-gps';
       card.innerHTML = `
         <div class="destination-thumb">
           <img src="${coverPhoto.url}" alt="${dest.name}" loading="lazy" />
@@ -493,7 +609,7 @@
             ${hasGps ? '📍' : '⚠️'} ${dest.fullName}
           </div>
           <div class="destination-sub">
-            ${hasGps ? formatDate(dest.latestDate) : '<span style="color:#ff7875;font-weight:500;">Bấm vào để ghim vị trí</span>'}
+            ${hasGps ? formatDate(dest.latestDate) : '<span style="color:#ff7875;font-weight:600;">Bấm vào để ghim toạ độ</span>'}
           </div>
         </div>
       `;
@@ -622,6 +738,7 @@
   }
 
   function updateAllViews() {
+    checkAndRenderNoGpsBanner();
     renderGallery();
     renderMapMarkers();
     renderDestinationsDrawer();
@@ -744,21 +861,6 @@
       galleryGrid.appendChild(card);
     });
   }
-
-  const POPULAR_LOCATIONS = [
-    { name: 'Hà Nội', lat: 21.0285, lng: 105.8542 },
-    { name: 'TP. Hồ Chí Minh', lat: 10.7769, lng: 106.7009 },
-    { name: 'Đà Nẵng', lat: 16.0544, lng: 108.2022 },
-    { name: 'Hội An, Quảng Nam', lat: 15.8801, lng: 108.3380 },
-    { name: 'Huế, Thừa Thiên Huế', lat: 16.4637, lng: 107.5909 },
-    { name: 'Nha Trang, Khánh Hòa', lat: 12.2388, lng: 109.1967 },
-    { name: 'Đà Lạt, Lâm Đồng', lat: 11.9404, lng: 108.4583 },
-    { name: 'Phú Quốc, Kiên Giang', lat: 10.2899, lng: 103.9840 },
-    { name: 'Hạ Long, Quảng Ninh', lat: 20.9505, lng: 107.0734 },
-    { name: 'Sa Pa, Lào Cai', lat: 22.3364, lng: 103.8438 },
-    { name: 'Vũng Tàu', lat: 10.3460, lng: 107.0843 },
-    { name: 'Quy Nhơn, Bình Định', lat: 13.7820, lng: 109.2190 }
-  ];
 
   // --- Lightbox Inspector Modal ---
   function openLightbox(item) {
@@ -1329,35 +1431,81 @@
 
   // --- Event Listeners Setup ---
   function setupEvents() {
-    // Dropzone
-    dropzone.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', (e) => {
-      const files = Array.from(e.target.files);
-      files.forEach(processFile);
-      fileInput.value = '';
-    });
-
-    ['dragenter', 'dragover'].forEach((eventName) => {
-      dropzone.addEventListener(eventName, (e) => {
-        e.preventDefault();
-        dropzone.classList.add('drag-over');
+    // Compact Upload Bar
+    if (dropzone) {
+      dropzone.addEventListener('click', () => fileInput && fileInput.click());
+      dropzone.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (fileInput) fileInput.click();
+        }
       });
-    });
 
-    ['dragleave', 'drop'].forEach((eventName) => {
-      dropzone.addEventListener(eventName, (e) => {
-        e.preventDefault();
-        dropzone.classList.remove('drag-over');
+      ['dragenter', 'dragover'].forEach((eventName) => {
+        dropzone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          dropzone.classList.add('drag-over');
+        });
       });
-    });
 
-    dropzone.addEventListener('drop', (e) => {
-      const dt = e.dataTransfer;
-      const files = Array.from(dt.files).filter((f) => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
-      if (files.length) {
+      ['dragleave', 'drop'].forEach((eventName) => {
+        dropzone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          dropzone.classList.remove('drag-over');
+        });
+      });
+
+      dropzone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = Array.from(dt.files).filter((f) => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
+        if (files.length) {
+          files.forEach(processFile);
+        } else {
+          showToast('Vui lòng chọn tệp hình ảnh');
+        }
+      });
+    }
+
+    if (fileInput) {
+      fileInput.addEventListener('change', (e) => {
+        const files = Array.from(e.target.files);
         files.forEach(processFile);
-      } else {
-        showToast('Vui lòng chọn tệp hình ảnh');
+        fileInput.value = '';
+      });
+    }
+
+    // Global Drag & Drop Overlay (drag anywhere on screen)
+    let dragCounter = 0;
+    window.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      dragCounter++;
+      if (globalDropOverlay) globalDropOverlay.hidden = false;
+    });
+
+    window.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        if (globalDropOverlay) globalDropOverlay.hidden = true;
+      }
+    });
+
+    window.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+
+    window.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      if (globalDropOverlay) globalDropOverlay.hidden = true;
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+        const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
+        if (files.length) {
+          files.forEach(processFile);
+        } else {
+          showToast('Vui lòng chọn tệp hình ảnh (JPG, PNG, HEIC, WEBP)');
+        }
       }
     });
 

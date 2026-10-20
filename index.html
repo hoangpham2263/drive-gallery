@@ -8,7 +8,7 @@
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="brand/apple-touch-icon.png" />
-    <link rel="stylesheet" href="style.css?v=20261020_06" />
+    <link rel="stylesheet" href="style.css?v=20261020_08" />
     <!-- Leaflet CSS for Travel Map -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <!-- Leaflet JS for Travel Map -->
@@ -62,33 +62,56 @@
         <button id="connectDrivePromptBtn" class="btn btn-primary btn-sm" type="button">Kết nối Google Drive của bạn</button>
       </div>
 
-      <!-- Upload Dropzone -->
+      <!-- Compact Upload & Action Strip -->
       <section class="upload-section">
-        <button id="dropzone" class="drop" type="button">
-          <svg class="drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-            <path d="m9 15 3-3 5 5"/>
-            <path d="m14 14 1-1 3 3"/>
-            <circle cx="9" cy="9" r="2"/>
-            <path d="M19 2v6"/>
-            <path d="M22 5h-6"/>
-          </svg>
-          <span class="drop-title">Kéo thả ảnh kỷ niệm vào đây hoặc bấm để chọn</span>
-          <span class="muted small">Tự động đọc GPS, ghim lên Bản đồ Hành trình • Hỗ trợ JPG, PNG, WEBP, AVIF, HEIC</span>
-          <div class="drop-badges">
-            <span class="chip">📍 Ghim lên Bản đồ Hành trình</span>
-            <span class="chip">🇻🇳 Đọc địa danh tự động</span>
-            <span class="chip">📷 EXIF máy ảnh</span>
-            <span class="chip">☁️ Tải lên Google Drive</span>
+        <div id="dropzone" class="upload-compact-bar" role="button" tabindex="0">
+          <div class="upload-compact-left">
+            <div class="upload-icon-bubble">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                <path d="m9 15 3-3 5 5"/>
+                <path d="m14 14 1-1 3 3"/>
+                <circle cx="9" cy="9" r="2"/>
+                <path d="M19 2v6"/>
+                <path d="M22 5h-6"/>
+              </svg>
+            </div>
+            <div class="upload-compact-info">
+              <div class="upload-compact-title">Thêm ảnh kỷ niệm vào bản đồ hành trình</div>
+              <div class="upload-compact-desc muted small">Kéo thả ảnh vào đây hoặc bấm để chọn • Tự động đọc GPS, EXIF máy ảnh &amp; ghim lên bản đồ</div>
+            </div>
           </div>
-        </button>
+          <div class="upload-compact-right">
+            <span class="btn btn-primary btn-sm upload-action-btn">+ Tải ảnh lên</span>
+          </div>
+        </div>
         <input id="fileInput" type="file" accept="image/*,.heic,.heif" multiple hidden />
 
         <!-- Uploading Queue -->
         <div id="uploadQueue" class="upload-queue" hidden></div>
       </section>
 
-      <!-- View Switcher Tabs -->
+      <!-- Global Drag Overlay -->
+      <div id="globalDropOverlay" class="global-drop-overlay" hidden>
+        <div class="drop-overlay-box">
+          <span class="drop-overlay-icon">📍</span>
+          <h3>Thả ảnh kỷ niệm vào đây</h3>
+          <p class="muted">Tự động trích xuất toạ độ GPS &amp; ghim lên bản đồ Việt Nam</p>
+        </div>
+      </div>
+
+      <!-- Quick Location Assignment Banner (shown when photos lack GPS) -->
+      <div id="noGpsBanner" class="no-gps-banner" hidden>
+        <div class="no-gps-banner-top">
+          <div class="no-gps-badge">💡 Gợi ý vị trí</div>
+          <div class="no-gps-title">Ảnh chưa có GPS (thường do Zalo/Facebook xoá toạ độ). Chọn nhanh địa điểm để ghim:</div>
+        </div>
+        <div id="quickLocationChips" class="quick-location-chips">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- View Switcher Bar -->
       <div class="view-switcher-bar">
         <div class="view-tabs" role="tablist">
           <button id="viewMapBtn" class="tab-btn active" type="button" role="tab" aria-selected="true">
@@ -117,14 +140,22 @@
           <div id="travelMap" class="travel-map"></div>
           
           <div class="map-overlay-header">
-            <span class="map-overlay-title">Bản đồ Hành trình Việt Nam</span>
+            <span class="map-flag">🇻🇳</span>
+            <span class="map-overlay-title">Hành trình Việt Nam</span>
             <span id="mapPlacesCount" class="map-overlay-badge">0 điểm đến</span>
           </div>
 
-          <button id="resetMapZoomBtn" class="map-reset-btn" type="button" title="Xem toàn cảnh bản đồ">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
-            Toàn cảnh
-          </button>
+          <div class="map-overlay-controls">
+            <div class="map-layer-switch" role="group" aria-label="Kiểu bản đồ">
+              <button id="layerDarkBtn" class="layer-pill active" type="button" title="Bản đồ Ban đêm">🌙 Đêm</button>
+              <button id="layerSatBtn" class="layer-pill" type="button" title="Vệ tinh ESRI">🛰️ Vệ tinh</button>
+              <button id="layerStreetBtn" class="layer-pill" type="button" title="Bản đồ Đường phố">🗺️ Sáng</button>
+            </div>
+            <button id="resetMapZoomBtn" class="map-reset-btn" type="button" title="Xem toàn cảnh bản đồ">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+              Toàn cảnh
+            </button>
+          </div>
         </div>
 
         <!-- Destinations drawer matching screenshot (89 cities visited / places cards) -->
@@ -328,6 +359,6 @@
     <!-- Toast Notification -->
     <div id="toast" class="toast">Đã sao chép vào bộ nhớ tạm!</div>
 
-    <script src="app.js?v=20261020_06"></script>
+    <script src="app.js?v=20261020_08"></script>
   </body>
 </html>
