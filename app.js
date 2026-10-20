@@ -523,7 +523,7 @@
               cancelMapPinning();
               return;
             }
-            travelMap.fitBounds(layer.getBounds(), { padding: [35, 35], maxZoom: 10 });
+            travelMap.setView(e.latlng, 7);
           }
         });
       }
@@ -531,7 +531,6 @@
 
     if (currentMapScope === 'vietnam') {
       vnProvincesLayer.addTo(travelMap);
-      if (markersLayer) markersLayer.bringToFront();
       if (mapPlacesCount) {
         const pct = Math.round((visitedCount / totalCount) * 100);
         mapPlacesCount.textContent = `🇻🇳 ${visitedCount}/${totalCount} tỉnh thành (${pct}%)`;
@@ -544,7 +543,8 @@
     if (!isLocationInVietnam(lat, lng) && currentMapScope === 'vietnam') {
       switchMapScope('global');
     }
-    travelMap.flyTo([lat, lng], zoom, { duration: 1.2 });
+    const targetZoom = (currentMapScope === 'vietnam') ? Math.min(zoom, 7.5) : zoom;
+    travelMap.flyTo([lat, lng], targetZoom, { duration: 1.2 });
   }
 
   function initTravelMap() {
@@ -555,6 +555,7 @@
         center: isVN ? [16.1, 107.5] : [20.0, 10.0],
         zoom: isVN ? 6 : 2.5,
         minZoom: isVN ? 5.2 : 2,
+        maxZoom: isVN ? 8.5 : 20,
         maxBounds: isVN ? VIETNAM_MAX_BOUNDS : null,
         maxBoundsViscosity: 0.85,
         zoomControl: true,
@@ -634,6 +635,7 @@
       });
 
       travelMap.options.minZoom = 5.2;
+      travelMap.options.maxZoom = 8.5;
       travelMap.setMaxBounds(VIETNAM_MAX_BOUNDS);
 
       renderVietnamVectorMap();
@@ -650,6 +652,7 @@
 
       travelMap.setMaxBounds(null);
       travelMap.options.minZoom = 2;
+      travelMap.options.maxZoom = 20;
 
       switchMapLayer(currentLayerType);
 
@@ -687,27 +690,16 @@
 
   function fitMapToBounds() {
     if (!travelMap || !markersLayer) return;
-    const bounds = [];
-    markersLayer.eachLayer((marker) => {
-      const latlng = marker.getLatLng();
-      if (currentMapScope === 'vietnam') {
-        if (isLocationInVietnam(latlng.lat, latlng.lng)) {
-          bounds.push(latlng);
-        }
-      } else {
-        bounds.push(latlng);
-      }
-    });
 
     if (currentMapScope === 'vietnam') {
-      if (bounds.length === 1) {
-        travelMap.setView(bounds[0], 12);
-      } else if (bounds.length > 1) {
-        travelMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
-      } else {
-        travelMap.setView([16.1, 107.5], 6);
-      }
-    } else {
+      travelMap.setView([16.1, 107.5], 6);
+      return;
+    }
+
+    const bounds = [];
+    markersLayer.eachLayer((marker) => {
+      bounds.push(marker.getLatLng());
+    });
       // Global
       if (bounds.length === 1) {
         travelMap.setView(bounds[0], 10);
