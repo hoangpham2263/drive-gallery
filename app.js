@@ -30,6 +30,7 @@
   const toast = document.getElementById('toast');
 
   // Badges & Banner
+  const openDriveFolderBtn = document.getElementById('openDriveFolderBtn');
   const connectionBadge = document.getElementById('connectionBadge');
   const connectionText = document.getElementById('connectionText');
   const demoBanner = document.getElementById('demoBanner');
@@ -635,6 +636,7 @@
       })
     };
 
+    await ensureDriveFolder();
     if (driveFolderId) {
       metadata.parents = [driveFolderId];
     }
@@ -704,6 +706,106 @@
     };
   }
 
+  // --- Ensure "DriveGallery" folder exists on Google Drive ---
+  async function ensureDriveFolder() {
+    if (driveFolderId) return driveFolderId;
+    if (!accessToken) return null;
+    try {
+      const config = loadSavedConfig();
+      const folderName = config.folderName || 'DriveGallery';
+      const q = `mimeType = 'application/vnd.google-apps.folder' and name = '${folderName}' and trashed = false`;
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id, name)`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.files && data.files.length > 0) {
+          driveFolderId = data.files[0].id;
+          updateDriveFolderUI(driveFolderId);
+          return driveFolderId;
+        }
+      }
+
+      // If not exists, create folder
+      const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: folderName,
+          mimeType: 'application/vnd.google-apps.folder'
+        })
+      });
+      if (createRes.ok) {
+        const newFolder = await createRes.json();
+        driveFolderId = newFolder.id;
+        updateDriveFolderUI(driveFolderId);
+        return driveFolderId;
+      }
+    } catch (e) {
+      console.warn('Error ensureDriveFolder', e);
+    }
+    return null;
+  }
+
+  function updateDriveFolderUI(fId) {
+    if (openDriveFolderBtn && fId) {
+      openDriveFolderBtn.href = `https://drive.google.com/drive/folders/${fId}`;
+      openDriveFolderBtn.hidden = false;
+    }
+  }
+
+  // --- Sync photos from Drive folder ---
+  async function syncDrivePhotos() {
+    if (!accessToken) return;
+    await ensureDriveFolder();
+    if (!driveFolderId) return;
+
+    try {
+      const q = `'${driveFolderId}' in parents and trashed = false and mimeType contains 'image/'`;
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id, name, mimeType, webViewLink, webContentLink, thumbnailLink, size, createdTime, description)&orderBy=createdTime desc`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.files && data.files.length > 0) {
+        const drivePhotos = data.files.map((file) => {
+          let descData = {};
+          try {
+            if (file.description) descData = JSON.parse(file.description);
+          } catch (e) {}
+          const directUrl = `https://lh3.googleusercontent.com/d/${file.id}`;
+          return {
+            id: file.id,
+            title: file.name.replace(/\.[^/.]+$/, ''),
+            url: directUrl,
+            directUrl: directUrl,
+            driveLink: file.webViewLink,
+            folder: 'travel',
+            size: parseInt(file.size || '0', 10),
+            date: file.createdTime,
+            camera: descData.camera || 'Google Drive',
+            settings: descData.settings || 'Đã đồng bộ từ Drive',
+            location: descData.location || null,
+            gps: descData.gps || null
+          };
+        });
+
+        // Prepend to photos avoiding duplicate IDs
+        const existingIds = new Set(photos.map(p => p.id));
+        const newItems = drivePhotos.filter(p => !existingIds.has(p.id));
+        if (newItems.length > 0) {
+          photos = [...newItems, ...photos];
+          renderGallery();
+        }
+      }
+    } catch (err) {
+      console.warn('Sync drive photos failed', err);
+    }
+  }
+
   // --- Google OAuth Connection ---
   function initGoogleAuth() {
     const config = loadSavedConfig();
@@ -712,7 +814,7 @@
         tokenClient = google.accounts.oauth2.initTokenClient({
           client_id: config.clientId,
           scope: 'https://www.googleapis.com/auth/drive.file',
-          callback: (tokenResponse) => {
+          callback: async (tokenResponse) => {
             if (tokenResponse.error !== undefined) {
               console.error('OAuth token error', tokenResponse);
               showToast('Lỗi xác thực Google Drive');
@@ -720,7 +822,9 @@
             }
             accessToken = tokenResponse.access_token;
             setConnectedState(true);
-            showToast('Đã kết nối thành công với Google Drive!');
+            showToast('Đã kết nối Google Drive! Đang chuẩn bị thư mục DriveGallery...');
+            await ensureDriveFolder();
+            await syncDrivePhotos();
           }
         });
       } catch (e) {
@@ -734,10 +838,12 @@
       connectionBadge.className = 'status-pill connected';
       connectionText.textContent = 'Đã kết nối Drive';
       demoBanner.hidden = true;
+      if (driveFolderId) updateDriveFolderUI(driveFolderId);
     } else {
       connectionBadge.className = 'status-pill demo';
       connectionText.textContent = 'Chế độ Demo';
       demoBanner.hidden = false;
+      if (openDriveFolderBtn) openDriveFolderBtn.hidden = true;
     }
   }
 
