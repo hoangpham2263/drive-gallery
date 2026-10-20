@@ -8,7 +8,7 @@
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="brand/apple-touch-icon.png" />
-    <link rel="stylesheet" href="style.css?v=20261020_08" />
+    <link rel="stylesheet" href="style.css?v=20261020_09" />
     <!-- Leaflet CSS for Travel Map -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <!-- Leaflet JS for Travel Map -->
@@ -147,11 +147,12 @@
 
           <div class="map-overlay-controls">
             <div class="map-layer-switch" role="group" aria-label="Kiểu bản đồ">
-              <button id="layerDarkBtn" class="layer-pill active" type="button" title="Bản đồ Ban đêm">🌙 Đêm</button>
-              <button id="layerSatBtn" class="layer-pill" type="button" title="Vệ tinh ESRI">🛰️ Vệ tinh</button>
-              <button id="layerStreetBtn" class="layer-pill" type="button" title="Bản đồ Đường phố">🗺️ Sáng</button>
+              <button id="layerGoogleBtn" class="layer-pill active" type="button" title="Bản đồ Google Maps Việt Nam cực nét">🗺️ Google</button>
+              <button id="layerSatBtn" class="layer-pill" type="button" title="Vệ tinh Google kèm tên đường">🛰️ Vệ tinh</button>
+              <button id="layerTerrainBtn" class="layer-pill" type="button" title="Địa hình đồi núi sông ngòi">⛰️ Địa hình</button>
+              <button id="layerDarkBtn" class="layer-pill" type="button" title="Bản đồ ban đêm">🌙 Đêm</button>
             </div>
-            <button id="resetMapZoomBtn" class="map-reset-btn" type="button" title="Xem toàn cảnh bản đồ">
+            <button id="resetMapZoomBtn" class="map-reset-btn" type="button" title="Xem toàn cảnh bản đồ Việt Nam">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
               Toàn cảnh
             </button>
@@ -359,6 +360,6 @@
     <!-- Toast Notification -->
     <div id="toast" class="toast">Đã sao chép vào bộ nhớ tạm!</div>
 
-    <script src="app.js?v=20261020_08"></script>
+    <script src="app.js?v=20261020_09"></script>
   </body>
 </html>

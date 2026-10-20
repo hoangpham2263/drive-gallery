@@ -47,9 +47,10 @@
   const travelMapEl = document.getElementById('travelMap');
   const mapPlacesCount = document.getElementById('mapPlacesCount');
   const resetMapZoomBtn = document.getElementById('resetMapZoomBtn');
-  const layerDarkBtn = document.getElementById('layerDarkBtn');
+  const layerGoogleBtn = document.getElementById('layerGoogleBtn');
   const layerSatBtn = document.getElementById('layerSatBtn');
-  const layerStreetBtn = document.getElementById('layerStreetBtn');
+  const layerTerrainBtn = document.getElementById('layerTerrainBtn');
+  const layerDarkBtn = document.getElementById('layerDarkBtn');
   const citiesVisitedCount = document.getElementById('citiesVisitedCount');
   const destinationsList = document.getElementById('destinationsList');
   const timelineContainer = document.getElementById('timelineContainer');
@@ -348,51 +349,60 @@
     return `${make} ${model}`.trim() || 'Camera';
   }
 
-  // --- Travel Map (Leaflet with Midnight Dark / Satellite Switcher) ---
-  let midnightLayer = null;
-  let satLayer = null;
-  let streetLayer = null;
-  let currentLayerType = 'midnight';
+  // --- Travel Map (Google Maps Vietnam Default + Satellite / Terrain / Dark Switcher) ---
+  let googleStreetLayer = null;
+  let googleHybridLayer = null;
+  let googleTerrainLayer = null;
+  let darkLayer = null;
+  let currentLayerType = 'google';
 
   function initTravelMap() {
     if (travelMap || !window.L || !travelMapEl) return;
     try {
       travelMap = L.map('travelMap', {
-        center: [16.0, 107.5],
+        center: [16.2, 107.5],
         zoom: 6,
         zoomControl: true,
         scrollWheelZoom: true
       });
 
-      // 1. Midnight Dark OSM Layer (Deep navy ocean, graphite land, crisp white Vietnamese text, 0 watermark)
-      midnightLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      // 1. Google Maps Vietnam (Standard Street - Crystal clear, official Vietnamese labels & full borders)
+      googleStreetLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&hl=vi&x={x}&y={y}&z={z}', {
+        subdomains: ['0', '1', '2', '3'],
+        attribution: '&copy; Google Maps',
+        maxZoom: 20
+      });
+
+      // 2. Google Hybrid (Real Satellite + Sharp Vietnamese roads & place names)
+      googleHybridLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&hl=vi&x={x}&y={y}&z={z}', {
+        subdomains: ['0', '1', '2', '3'],
+        attribution: '&copy; Google Maps Vệ tinh',
+        maxZoom: 20
+      });
+
+      // 3. Google Terrain (Elevation & mountains + Vietnamese labels)
+      googleTerrainLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=p&hl=vi&x={x}&y={y}&z={z}', {
+        subdomains: ['0', '1', '2', '3'],
+        attribution: '&copy; Google Maps Địa hình',
+        maxZoom: 20
+      });
+
+      // 4. Dark Midnight Mode
+      darkLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors',
         className: 'map-tiles-midnight',
         maxZoom: 18
       });
 
-      // 2. Satellite Layer (ESRI World Imagery)
-      satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: '&copy; Esri World Imagery',
-        className: 'map-tiles-satellite',
-        maxZoom: 18
-      });
-
-      // 3. Street Map (Standard Daylight OSM)
-      streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        className: 'map-tiles-street',
-        maxZoom: 18
-      });
-
-      // Default layer: Midnight Dark
-      midnightLayer.addTo(travelMap);
+      // Default layer: Google Maps Vietnam (Crystal clear)
+      googleStreetLayer.addTo(travelMap);
 
       markersLayer = L.layerGroup().addTo(travelMap);
 
-      if (layerDarkBtn) layerDarkBtn.addEventListener('click', () => switchMapLayer('midnight'));
+      if (layerGoogleBtn) layerGoogleBtn.addEventListener('click', () => switchMapLayer('google'));
       if (layerSatBtn) layerSatBtn.addEventListener('click', () => switchMapLayer('sat'));
-      if (layerStreetBtn) layerStreetBtn.addEventListener('click', () => switchMapLayer('street'));
+      if (layerTerrainBtn) layerTerrainBtn.addEventListener('click', () => switchMapLayer('terrain'));
+      if (layerDarkBtn) layerDarkBtn.addEventListener('click', () => switchMapLayer('dark'));
 
       if (resetMapZoomBtn) {
         resetMapZoomBtn.addEventListener('click', fitMapToBounds);
@@ -405,21 +415,24 @@
   function switchMapLayer(type) {
     if (!travelMap) return;
     currentLayerType = type;
-    [layerDarkBtn, layerSatBtn, layerStreetBtn].forEach(btn => btn && btn.classList.remove('active'));
+    [layerGoogleBtn, layerSatBtn, layerTerrainBtn, layerDarkBtn].forEach(btn => btn && btn.classList.remove('active'));
 
-    if (midnightLayer && travelMap.hasLayer(midnightLayer)) travelMap.removeLayer(midnightLayer);
-    if (satLayer && travelMap.hasLayer(satLayer)) travelMap.removeLayer(satLayer);
-    if (streetLayer && travelMap.hasLayer(streetLayer)) travelMap.removeLayer(streetLayer);
+    [googleStreetLayer, googleHybridLayer, googleTerrainLayer, darkLayer].forEach(layer => {
+      if (layer && travelMap.hasLayer(layer)) travelMap.removeLayer(layer);
+    });
 
-    if (type === 'sat' && satLayer) {
-      satLayer.addTo(travelMap);
+    if (type === 'sat' && googleHybridLayer) {
+      googleHybridLayer.addTo(travelMap);
       if (layerSatBtn) layerSatBtn.classList.add('active');
-    } else if (type === 'street' && streetLayer) {
-      streetLayer.addTo(travelMap);
-      if (layerStreetBtn) layerStreetBtn.classList.add('active');
-    } else if (midnightLayer) {
-      midnightLayer.addTo(travelMap);
+    } else if (type === 'terrain' && googleTerrainLayer) {
+      googleTerrainLayer.addTo(travelMap);
+      if (layerTerrainBtn) layerTerrainBtn.classList.add('active');
+    } else if (type === 'dark' && darkLayer) {
+      darkLayer.addTo(travelMap);
       if (layerDarkBtn) layerDarkBtn.classList.add('active');
+    } else if (googleStreetLayer) {
+      googleStreetLayer.addTo(travelMap);
+      if (layerGoogleBtn) layerGoogleBtn.classList.add('active');
     }
   }
 
@@ -434,7 +447,7 @@
     } else if (bounds.length > 1) {
       travelMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
     } else {
-      travelMap.setView([16.0, 107.5], 6);
+      travelMap.setView([16.2, 107.5], 6);
     }
   }
 
