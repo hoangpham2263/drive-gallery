@@ -55,10 +55,8 @@
   const destinationsList = document.getElementById('destinationsList');
   const timelineContainer = document.getElementById('timelineContainer');
 
-  // Badges & Banners
+  // Badges & Actions
   const globalDropOverlay = document.getElementById('globalDropOverlay');
-  const noGpsBanner = document.getElementById('noGpsBanner');
-  const quickLocationChips = document.getElementById('quickLocationChips');
   const openDriveFolderBtn = document.getElementById('openDriveFolderBtn');
   const quickConnectDriveBtn = document.getElementById('quickConnectDriveBtn');
   const connectionBadge = document.getElementById('connectionBadge');
@@ -518,32 +516,7 @@
     }
   }
 
-  // --- No-GPS Quick Assignment Banner & Handler ---
-  function checkAndRenderNoGpsBanner() {
-    if (!noGpsBanner || !quickLocationChips) return;
-    const photosWithoutGps = photos.filter(p => !p.gps || typeof p.gps.lat !== 'number');
-    if (photosWithoutGps.length === 0) {
-      noGpsBanner.hidden = true;
-      return;
-    }
-
-    noGpsBanner.hidden = false;
-    const targetPhoto = photosWithoutGps[0];
-
-    quickLocationChips.innerHTML = '';
-    POPULAR_LOCATIONS.forEach((loc) => {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'location-chip-btn';
-      chip.innerHTML = `📍 ${loc.name}`;
-      chip.title = `Ghim ảnh "${targetPhoto.title}" vào ${loc.fullName}`;
-      chip.addEventListener('click', () => {
-        assignLocationToPhoto(targetPhoto.id, loc);
-      });
-      quickLocationChips.appendChild(chip);
-    });
-  }
-
+  // --- Location Assignment Helper ---
   function assignLocationToPhoto(photoId, loc) {
     const photo = photos.find(p => p.id === photoId);
     if (!photo) return;
@@ -744,7 +717,6 @@
   }
 
   function updateAllViews() {
-    checkAndRenderNoGpsBanner();
     renderGallery();
     renderMapMarkers();
     renderDestinationsDrawer();
