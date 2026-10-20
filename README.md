@@ -28,9 +28,11 @@ python3 -m http.server 8000
 2. Vào **APIs & Services** > Bật **Google Drive API**.
 3. Vào **Credentials** > **Create Credentials** > **OAuth client ID**.
 4. Chọn loại ứng dụng: **Web application**.
-5. Thêm Authorized JavaScript origins:
+5. Bấm **+ ADD URI** tại mục **Authorized JavaScript origins** và thêm đủ 3 dòng riêng biệt:
    - `https://hoangpham.is-a.dev`
-   - `http://localhost:8000` (nếu chạy local)
+   - `http://localhost:3000`
+   - `http://localhost:8000`
+   *(Lưu ý: Không để dấu `/` ở cuối các đường dẫn)*
 6. Copy **Client ID** dán vào mục *Cấu hình Drive* trên giao diện web.
 
 ## License
