@@ -68,6 +68,7 @@
   const folderNameInput = document.getElementById('folderNameInput');
   const saveAndConnectBtn = document.getElementById('saveAndConnectBtn');
   const resetDemoBtn = document.getElementById('resetDemoBtn');
+  const disconnectBtn = document.getElementById('disconnectBtn');
 
   // Default Demo Photos (Real landscapes with GPS and EXIF)
   const DEMO_PHOTOS = [
@@ -218,6 +219,12 @@
   }
 
   function loadPhotos() {
+    const savedToken = sessionStorage.getItem('drive_access_token');
+    const expiresAt = parseInt(sessionStorage.getItem('drive_token_expires') || '0', 10);
+    if (savedToken && expiresAt > Date.now()) {
+      photos = [];
+      return;
+    }
     try {
       const raw = localStorage.getItem(STORAGE_KEY_ITEMS);
       if (raw) {
@@ -232,7 +239,6 @@
     }
     // Fallback to demo items
     photos = [...DEMO_PHOTOS];
-    savePhotos();
   }
 
   function savePhotos() {
@@ -331,11 +337,15 @@
     }
 
     if (list.length === 0) {
+      const emptyMsg = accessToken
+        ? `<p><b>Thư mục DriveGallery trên Google Drive của bạn chưa có ảnh nào</b></p>
+           <p class="muted small">Hãy kéo thả ảnh vào ô bên trên để tải bức ảnh đầu tiên lên Google Drive của bạn!</p>`
+        : `<p><b>Không tìm thấy ảnh nào</b></p>
+           <p class="muted small">Hãy thử tìm từ khóa khác hoặc kéo thả ảnh mới vào để tải lên.</p>`;
       galleryGrid.innerHTML = `
         <div class="empty-state">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="muted" style="margin-bottom:8px;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <p><b>Không tìm thấy ảnh nào</b></p>
-          <p class="muted small">Hãy thử tìm từ khóa khác hoặc kéo thả ảnh mới vào để tải lên.</p>
+          ${emptyMsg}
         </div>
       `;
       return;
@@ -806,17 +816,25 @@
           };
         });
 
-        // Prepend to photos avoiding duplicate IDs
-        const existingIds = new Set(photos.map(p => p.id));
-        const newItems = drivePhotos.filter(p => !existingIds.has(p.id));
-        if (newItems.length > 0) {
-          photos = [...newItems, ...photos];
-          renderGallery();
-        }
+        // Show only real Google Drive photos when connected
+        photos = drivePhotos;
+        renderGallery();
       }
     } catch (err) {
       console.warn('Sync drive photos failed', err);
     }
+  }
+
+  function restoreSessionAuth() {
+    const savedToken = sessionStorage.getItem('drive_access_token');
+    const expiresAt = parseInt(sessionStorage.getItem('drive_token_expires') || '0', 10);
+    if (savedToken && expiresAt > Date.now()) {
+      accessToken = savedToken;
+      setConnectedState(true);
+      ensureDriveFolder().then(() => syncDrivePhotos());
+      return true;
+    }
+    return false;
   }
 
   // --- Google OAuth Connection ---
@@ -834,12 +852,21 @@
               return;
             }
             accessToken = tokenResponse.access_token;
+            const expiresIn = (tokenResponse.expires_in || 3500) * 1000;
+            sessionStorage.setItem('drive_access_token', accessToken);
+            sessionStorage.setItem('drive_token_expires', (Date.now() + expiresIn).toString());
+            config.hasConnected = true;
+            saveConfig(config);
+
             setConnectedState(true);
             showToast('Đã kết nối Google Drive! Đang chuẩn bị thư mục DriveGallery...');
             await ensureDriveFolder();
             await syncDrivePhotos();
           }
         });
+
+        // Auto restore previous session if available
+        restoreSessionAuth();
       } catch (e) {
         console.warn('Error initTokenClient', e);
       }
@@ -852,11 +879,13 @@
       connectionText.textContent = 'Đã kết nối Drive';
       demoBanner.hidden = true;
       if (driveFolderId) updateDriveFolderUI(driveFolderId);
+      if (disconnectBtn) disconnectBtn.hidden = false;
     } else {
       connectionBadge.className = 'status-pill demo';
       connectionText.textContent = 'Chế độ Demo';
       demoBanner.hidden = false;
       if (openDriveFolderBtn) openDriveFolderBtn.hidden = true;
+      if (disconnectBtn) disconnectBtn.hidden = true;
     }
   }
 
@@ -1020,6 +1049,23 @@
         showToast('Đã khôi phục dữ liệu Demo thành công');
       }
     });
+
+    if (disconnectBtn) {
+      disconnectBtn.addEventListener('click', () => {
+        sessionStorage.removeItem('drive_access_token');
+        sessionStorage.removeItem('drive_token_expires');
+        accessToken = null;
+        driveFolderId = null;
+        const cfg = loadSavedConfig();
+        cfg.hasConnected = false;
+        saveConfig(cfg);
+        setConnectedState(false);
+        photos = [...DEMO_PHOTOS];
+        renderGallery();
+        configModal.classList.remove('open');
+        showToast('Đã đăng xuất Google Drive, quay về chế độ Demo');
+      });
+    }
   }
 
   // --- Initialize App ---
