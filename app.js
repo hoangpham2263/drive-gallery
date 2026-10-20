@@ -593,9 +593,10 @@
       }, 2500);
     } catch (err) {
       console.error('File process failed', err);
-      statusEl.textContent = '❌ Lỗi xử lý ảnh';
+      statusEl.textContent = `❌ ${err.message || 'Lỗi xử lý ảnh'}`;
       statusEl.style.color = 'var(--danger)';
       fillEl.style.background = 'var(--danger)';
+      showToast(`❌ Không thể tải ảnh: ${err.message || 'Lỗi không xác định'}`);
     }
   }
 
@@ -641,15 +642,29 @@
     });
   }
 
+  let ensureFolderPromise = null;
+
   // --- Google Drive REST API v3 Integration ---
   async function uploadToGoogleDrive(file, meta) {
-    const boundary = '-------314159265358979323846';
+    let mimeType = file.type;
+    if (!mimeType) {
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+      else if (ext === 'png') mimeType = 'image/png';
+      else if (ext === 'webp') mimeType = 'image/webp';
+      else if (ext === 'gif') mimeType = 'image/gif';
+      else if (ext === 'heic') mimeType = 'image/heic';
+      else if (ext === 'heif') mimeType = 'image/heif';
+      else mimeType = 'image/jpeg';
+    }
+
+    const boundary = '-------DriveGallery' + Date.now();
     const delimiter = `\r\n--${boundary}\r\n`;
     const closeDelimiter = `\r\n--${boundary}--`;
 
     const metadata = {
       name: file.name,
-      mimeType: file.type || 'image/jpeg',
+      mimeType: mimeType,
       description: JSON.stringify({
         location: meta.location,
         gps: meta.gps,
@@ -665,32 +680,39 @@
       metadata.parents = [driveFolderId];
     }
 
-    const fileReader = new FileReader();
-    const fileDataPromise = new Promise((resolve) => {
-      fileReader.onload = () => resolve(fileReader.result);
-      fileReader.readAsArrayBuffer(file);
-    });
-    const fileBytes = await fileDataPromise;
+    const fileBytes = await file.arrayBuffer();
 
     const multipartRequestBody = new Blob([
       delimiter,
       'Content-Type: application/json; charset=UTF-8\r\n\r\n',
       JSON.stringify(metadata),
       delimiter,
-      `Content-Type: ${file.type || 'image/jpeg'}\r\n\r\n`,
+      `Content-Type: ${mimeType}\r\n\r\n`,
       fileBytes,
       closeDelimiter
-    ]);
+    ], { type: `multipart/related; boundary=${boundary}` });
 
     const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink,thumbnailLink', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${accessToken}`
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`
       },
       body: multipartRequestBody
     });
 
-    if (!res.ok) throw new Error('Google Drive upload failed');
+    if (!res.ok) {
+      if (res.status === 401) {
+        sessionStorage.removeItem('drive_access_token');
+        sessionStorage.removeItem('drive_token_expires');
+        accessToken = null;
+        setConnectedState(false);
+        throw new Error('Phiên đăng nhập Google Drive đã hết hạn. Vui lòng bấm Kết nối lại.');
+      }
+      const errJson = await res.json().catch(() => null);
+      const errMsg = errJson?.error?.message || `Lỗi Drive HTTP ${res.status}`;
+      throw new Error(errMsg);
+    }
     const driveFile = await res.json();
 
     // Make file readable by anyone with link (for direct embed)
@@ -734,44 +756,52 @@
   async function ensureDriveFolder() {
     if (driveFolderId) return driveFolderId;
     if (!accessToken) return null;
-    try {
-      const config = loadSavedConfig();
-      const folderName = config.folderName || 'DriveGallery';
-      const q = `mimeType = 'application/vnd.google-apps.folder' and name = '${folderName}' and trashed = false`;
-      const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id, name)`, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.files && data.files.length > 0) {
-          driveFolderId = data.files[0].id;
+    if (ensureFolderPromise) return ensureFolderPromise;
+
+    ensureFolderPromise = (async () => {
+      try {
+        const config = loadSavedConfig();
+        const folderName = config.folderName || 'DriveGallery';
+        const q = `mimeType = 'application/vnd.google-apps.folder' and name = '${folderName}' and trashed = false`;
+        const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id, name)`, {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.files && data.files.length > 0) {
+            driveFolderId = data.files[0].id;
+            updateDriveFolderUI(driveFolderId);
+            return driveFolderId;
+          }
+        }
+
+        // If not exists, create folder
+        const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name: folderName,
+            mimeType: 'application/vnd.google-apps.folder'
+          })
+        });
+        if (createRes.ok) {
+          const newFolder = await createRes.json();
+          driveFolderId = newFolder.id;
           updateDriveFolderUI(driveFolderId);
           return driveFolderId;
         }
+      } catch (e) {
+        console.warn('Error ensureDriveFolder', e);
+      } finally {
+        ensureFolderPromise = null;
       }
+      return null;
+    })();
 
-      // If not exists, create folder
-      const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: folderName,
-          mimeType: 'application/vnd.google-apps.folder'
-        })
-      });
-      if (createRes.ok) {
-        const newFolder = await createRes.json();
-        driveFolderId = newFolder.id;
-        updateDriveFolderUI(driveFolderId);
-        return driveFolderId;
-      }
-    } catch (e) {
-      console.warn('Error ensureDriveFolder', e);
-    }
-    return null;
+    return ensureFolderPromise;
   }
 
   function updateDriveFolderUI(fId) {
