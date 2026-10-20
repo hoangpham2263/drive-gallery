@@ -326,7 +326,7 @@
       const s = await api("/api/status");
       if (!s.admin) throw new Error("Sai mật khẩu quản lý.");
       if (!s.connected) {
-        toast("Chưa kết nối Google Drive — đang mở trang kết nối…");
+        toast("Chọn tài khoản hoangpham2263@gmail.com để kết nối Google Drive");
         window.open(`${API}/oauth/start?key=${encodeURIComponent(adminKey)}`, "_blank");
       }
     } catch (err) {
