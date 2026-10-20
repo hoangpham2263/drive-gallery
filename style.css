@@ -156,12 +156,25 @@ button, select, .ghost, .primary, .outline, .btn-sm {
   border-radius: 50%;
   background: var(--muted);
 }
+.status-pill.connected {
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--good);
+  font-weight: 600;
+}
 .status-pill.connected .status-dot {
   background: var(--good);
   box-shadow: 0 0 6px var(--good);
 }
+.status-pill.demo {
+  color: var(--warn);
+}
 .status-pill.demo .status-dot {
   background: var(--warn);
+}
+
+[hidden] {
+  display: none !important;
 }
 
 /* Banner */
@@ -176,6 +189,9 @@ button, select, .ghost, .primary, .outline, .btn-sm {
   gap: 12px;
   font-size: 13.5px;
   flex-wrap: wrap;
+}
+.banner[hidden] {
+  display: none !important;
 }
 .banner strong { color: var(--warn); }
 

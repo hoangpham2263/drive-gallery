@@ -339,7 +339,8 @@
     if (list.length === 0) {
       const emptyMsg = accessToken
         ? `<p><b>Thư mục DriveGallery trên Google Drive của bạn chưa có ảnh nào</b></p>
-           <p class="muted small">Hãy kéo thả ảnh vào ô bên trên để tải bức ảnh đầu tiên lên Google Drive của bạn!</p>`
+           <p class="muted small">Hãy kéo thả hoặc bấm vào ô bên trên để tải bức ảnh đầu tiên lên Google Drive của bạn!</p>
+           ${driveFolderId ? `<p style="margin-top:12px;"><a href="https://drive.google.com/drive/folders/${driveFolderId}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">📁 Mở thư mục DriveGallery trên Google Drive ↗</a></p>` : ''}`
         : `<p><b>Không tìm thấy ảnh nào</b></p>
            <p class="muted small">Hãy thử tìm từ khóa khác hoặc kéo thả ảnh mới vào để tải lên.</p>`;
       galleryGrid.innerHTML = `
@@ -776,7 +777,9 @@
   function updateDriveFolderUI(fId) {
     if (openDriveFolderBtn && fId) {
       openDriveFolderBtn.href = `https://drive.google.com/drive/folders/${fId}`;
+      openDriveFolderBtn.innerHTML = '📁 Thư mục DriveGallery ↗';
       openDriveFolderBtn.hidden = false;
+      openDriveFolderBtn.style.display = 'inline-flex';
     }
   }
 
@@ -819,6 +822,10 @@
         // Show only real Google Drive photos when connected
         photos = drivePhotos;
         renderGallery();
+      } else {
+        // Folder exists on Drive but is empty
+        photos = [];
+        renderGallery();
       }
     } catch (err) {
       console.warn('Sync drive photos failed', err);
@@ -830,6 +837,7 @@
     const expiresAt = parseInt(sessionStorage.getItem('drive_token_expires') || '0', 10);
     if (savedToken && expiresAt > Date.now()) {
       accessToken = savedToken;
+      photos = [];
       setConnectedState(true);
       ensureDriveFolder().then(() => syncDrivePhotos());
       return true;
@@ -848,6 +856,7 @@
           callback: async (tokenResponse) => {
             if (tokenResponse.error !== undefined) {
               console.error('OAuth token error', tokenResponse);
+              alert('Lỗi xác thực Google: ' + (tokenResponse.error_description || tokenResponse.error));
               showToast('Lỗi xác thực Google Drive');
               return;
             }
@@ -858,9 +867,13 @@
             config.hasConnected = true;
             saveConfig(config);
 
+            photos = [];
+            renderGallery();
             setConnectedState(true);
-            showToast('Đã kết nối Google Drive! Đang chuẩn bị thư mục DriveGallery...');
-            await ensureDriveFolder();
+            showToast('✅ Đã kết nối Google Drive! Đang chuẩn bị thư mục DriveGallery...');
+
+            const fId = await ensureDriveFolder();
+            if (fId) updateDriveFolderUI(fId);
             await syncDrivePhotos();
           }
         });
@@ -878,13 +891,18 @@
       connectionBadge.className = 'status-pill connected';
       connectionText.textContent = 'Đã kết nối Drive';
       demoBanner.hidden = true;
+      demoBanner.style.display = 'none';
       if (driveFolderId) updateDriveFolderUI(driveFolderId);
       if (disconnectBtn) disconnectBtn.hidden = false;
     } else {
       connectionBadge.className = 'status-pill demo';
       connectionText.textContent = 'Chế độ Demo';
       demoBanner.hidden = false;
-      if (openDriveFolderBtn) openDriveFolderBtn.hidden = true;
+      demoBanner.style.display = 'flex';
+      if (openDriveFolderBtn) {
+        openDriveFolderBtn.hidden = true;
+        openDriveFolderBtn.style.display = 'none';
+      }
       if (disconnectBtn) disconnectBtn.hidden = true;
     }
   }
@@ -902,7 +920,7 @@
     if (tokenClient) {
       tokenClient.requestAccessToken({ prompt: 'consent' });
     } else {
-      showToast('Vui lòng kiểm tra lại Google Client ID trong cài đặt');
+      showToast('Đang tải thư viện Google, vui lòng thử lại sau 1-2 giây...');
       configModal.classList.add('open');
     }
   }
@@ -1070,7 +1088,11 @@
 
   // --- Initialize App ---
   function init() {
-    loadPhotos();
+    const isRestored = restoreSessionAuth();
+    if (!isRestored) {
+      loadPhotos();
+      setConnectedState(false);
+    }
     renderGallery();
     setupEvents();
 
@@ -1080,7 +1102,7 @@
         clearInterval(checkGisInterval);
         initGoogleAuth();
       }
-    }, 300);
+    }, 200);
   }
 
   // Run on DOM ready
