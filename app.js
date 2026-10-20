@@ -426,6 +426,7 @@
     if (!files.length) return;
     pending = [];
     $("uploadList").replaceChildren(el("p", { className: "muted small", textContent: `Đang đọc ${files.length} ảnh…` }));
+    $("upProgress").hidden = true;
     $("uploadDlg").showModal();
     let done = 0;
     const note = $("uploadList").firstChild;
@@ -456,11 +457,22 @@
   }
 
   const UPLOAD_LIMIT = 4;
-  const sendFile = async (blob, name, type) => {
+  // XHR instead of fetch so upload progress can be shown
+  const sendFile = (blob, name, type, onProgress) => new Promise((resolve, reject) => {
     const fd = new FormData();
     fd.append("file", new File([blob], name, { type }));
-    return (await api("/api/upload", { method: "POST", body: fd })).id;
-  };
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API}/api/upload`);
+    xhr.setRequestHeader("x-admin-key", adminKey);
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded);
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch {}
+      xhr.status < 300 && data.id ? (onProgress(blob.size), resolve(data.id)) : reject(new Error(data.error || `Lỗi ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error("Mất kết nối khi tải lên."));
+    xhr.send(fd);
+  });
 
   $("uploadGo").onclick = async () => {
     const todo = pending.filter((p) => !p.done);
@@ -468,17 +480,32 @@
     if (missing.length && !confirm(`${missing.length} ảnh chưa chọn tỉnh, vẫn tải lên?`)) return;
     $("uploadGo").disabled = true;
     const t0 = performance.now();
+    // Overall progress: bytes sent across every photo + photos finished
+    const total = todo.reduce((n, p) => n + p.full.blob.size + p.thumb.blob.size, 0);
+    const sent = new Map();
+    let finished = 0;
+    const paint = () => {
+      const bytes = [...sent.values()].reduce((a, b) => a + b, 0);
+      const pct = Math.min(99, Math.round((bytes / total) * 100));
+      $("upBar").style.width = `${pct}%`;
+      $("upText").textContent = `Đang tải lên ${finished}/${todo.length} ảnh · ${pct}%`;
+    };
+    $("upProgress").hidden = false;
+    paint();
     // 1) files to Drive, several photos at once (full + thumbnail in parallel per photo)
     await pool(todo, UPLOAD_LIMIT, async (p) => {
       p.state.className = "up-state full";
       p.state.textContent = "Đang tải lên…";
       try {
+        const track = (key) => (n) => { sent.set(key, n); const pct = Math.round((((sent.get(p.name + "f") || 0) + (sent.get(p.name + "t") || 0)) / (p.full.blob.size + p.thumb.blob.size)) * 100); p.state.textContent = `Đang tải lên… ${pct}%`; paint(); };
         const [fileId, thumbId] = await Promise.all([
-          sendFile(p.full.blob, p.name, "image/jpeg"),
-          sendFile(p.thumb.blob, p.name.replace(/\.\w+$/, ".webp"), "image/webp"),
+          sendFile(p.full.blob, p.name, "image/jpeg", track(p.name + "f")),
+          sendFile(p.thumb.blob, p.name.replace(/\.\w+$/, ".webp"), "image/webp", track(p.name + "t")),
         ]);
         Object.assign(p, { fileId, thumbId });
-        p.state.textContent = "Đã tải file, đang lưu…";
+        finished++;
+        p.state.textContent = "✓ Đã tải file";
+        paint();
       } catch (err) {
         p.state.className = "up-state full err";
         p.state.textContent = err.message;
@@ -486,6 +513,7 @@
     });
     // 2) add them all to the list in one request
     const uploaded = todo.filter((p) => p.fileId);
+    $("upText").textContent = `Đang lưu ${uploaded.length} ảnh vào bản đồ…`;
     if (uploaded.length) {
       try {
         const added = await api("/api/photos", {
@@ -505,6 +533,8 @@
     renderAll();
     $("uploadGo").disabled = false;
     const ok = todo.filter((p) => p.done).length;
+    $("upBar").style.width = "100%";
+    $("upText").textContent = `✓ Xong ${ok}/${todo.length} ảnh`;
     toast(`✓ Đã tải lên ${ok}/${todo.length} ảnh trong ${((performance.now() - t0) / 1000).toFixed(1)} giây`);
     if (pending.every((p) => p.done)) setTimeout(() => $("uploadDlg").close(), 800);
   };

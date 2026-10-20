@@ -89,9 +89,12 @@ async function uploadFile(env, name, mime, bytes) {
 
 // ---------- Photo list ----------
 const readList = async (env) => (await env.MEM.get(LIST_KEY, "json")) || [];
-async function writeList(env, list) {
+async function writeList(env, list, ctx) {
   await env.MEM.put(LIST_KEY, JSON.stringify(list));
-  // Mirror to Drive so the metadata survives even without KV
+  // Mirror to Drive in the background so the metadata survives even without KV; the reply does not wait for it
+  ctx.waitUntil(mirrorList(env, list));
+}
+async function mirrorList(env, list) {
   try {
     const saved = await env.MEM.get("list_file_id");
     const bytes = new TextEncoder().encode(JSON.stringify(list, null, 1));
@@ -215,7 +218,7 @@ async function handle(req, env, ctx) {
     }));
     const list = await readList(env);
     list.push(...added);
-    await writeList(env, list);
+    await writeList(env, list, ctx);
     return json(added);
   }
 
@@ -225,7 +228,7 @@ async function handle(req, env, ctx) {
     const item = list.find((p) => p.id === one[1]);
     if (!item) return json({ error: "Không tìm thấy ảnh." }, 404);
     Object.assign(item, cleanMeta(await req.json()));
-    await writeList(env, list);
+    await writeList(env, list, ctx);
     return json(item);
   }
   if (one && req.method === "DELETE") {
@@ -235,7 +238,7 @@ async function handle(req, env, ctx) {
     for (const id of [item.fileId, item.thumbId].filter(Boolean)) {
       try { await drive(env, `/drive/v3/files/${id}`, { method: "DELETE" }); } catch {}
     }
-    await writeList(env, list.filter((p) => p.id !== item.id));
+    await writeList(env, list.filter((p) => p.id !== item.id), ctx);
     return json({ ok: true });
   }
 
