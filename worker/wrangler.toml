@@ -1,0 +1,14 @@
+name = "memories-api"
+main = "index.js"
+compatibility_date = "2026-10-01"
+account_id = "20187715d7c7715eb7cf02f1ca1f5a84"
+workers_dev = true
+
+# Stores the Google refresh token, cached access token and the photo list.
+
+[[kv_namespaces]]
+binding = "MEM"
+id = "ef8a4d537fdc449991b905cab6fa9f74"
+
+# Secrets (set with `npx wrangler secret put <NAME>`):
+#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ADMIN_PASSWORD

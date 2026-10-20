@@ -1,40 +1,42 @@
 # Hoang's Memories
 
-**Hoang's Memories** — Bản đồ Hành trình & Kho lưu trữ kỷ niệm du lịch qua ảnh của **Phạm Quốc Hoàng**. Tự động ghim toạ độ GPS, phân loại theo điểm đến và mốc thời gian, đồng bộ Google Drive.
+Bản đồ hành trình: những nơi đã đi qua ở Việt Nam, lưu lại bằng ảnh.
 
-**Dùng thử:** https://hoangpham.is-a.dev/memories/
+**Website:** https://hoangpham.is-a.dev/memories/
 
-## Tính năng nổi bật
+## Tính năng
 
-- 🗺️ **Bản đồ Hành trình tương tác (Travel Map):** Bản đồ nền tối sắc nét (ESRI World Dark Gray) với các điểm ghim tròn đồng tâm phát sáng tại các thành phố/điểm đến đã ghé thăm.
-- 🗂️ **Khay Điểm đến (Destinations Drawer):** Đếm số điểm đến đã ghé thăm (VD: *89 cities visited*), tự động nhóm ảnh theo địa danh, bấm vào thẻ điểm đến để lướt bản đồ tới vị trí đó.
-- 📅 **Dòng thời gian (Timeline View):** Sắp xếp album ảnh theo từng mốc thời gian (Tháng/Năm) như một cuốn nhật ký hành trình.
-- 📍 **Ghim vị trí 1-Chạm:** Đối với ảnh tải từ Facebook/Zalo bị xoá GPS, người dùng có thể bấm chọn nhanh địa danh (Hà Nội, Đà Nẵng, TP.HCM, Phú Quốc...) để ghim ảnh lên bản đồ.
-- ☁️ **Lưu trữ Google Drive an toàn:** Kết nối trực tiếp tài khoản Google qua OAuth 2.0 (`drive.file`). Dữ liệu lưu trong thư mục riêng của bạn, không qua server trung gian.
-- 📷 **Đọc thông số kỹ thuật (EXIF):** Nhận diện thiết bị chụp (iPhone, Sony, Canon...), khẩu độ, tiêu cự, ISO, tốc độ chụp.
-- 🔗 **Tạo link nhúng 1-Click:** Nhận nhanh Direct Image URL, Markdown `![alt](url)` và HTML tag để chèn vào blog/portfolio.
-- 🖼️ **Đa định dạng:** Hỗ trợ JPG, PNG, WEBP, AVIF, HEIC từ điện thoại.
+- Bản đồ Việt Nam **34 tỉnh, thành phố** (sau sáp nhập 2025), có quần đảo Hoàng Sa và Trường Sa. Tỉnh đã đến được tô màu, đếm "Đã đến x/34".
+- Bấm vào tỉnh để xem ảnh ở nơi đó; dòng thời gian theo tháng.
+- Upload ảnh (chế độ quản lý): đọc GPS và ngày chụp từ EXIF, tự gán tỉnh; ảnh không có GPS thì chọn tỉnh. Hỗ trợ HEIC, tự nén về tối đa 2560px.
+- Ảnh lưu trong Google Drive (thư mục riêng), qua Cloudflare Worker giữ kết nối lâu dài — không phải đăng nhập lại.
 
-## Chạy thử local
+## Cấu trúc
+
+| File | Vai trò |
+|---|---|
+| `index.html`, `style.css`, `app.js` | Giao diện |
+| `vn-34.json` | Ranh giới 34 tỉnh, thành phố (gộp từ 63 tỉnh cũ theo Nghị quyết 202/2025/QH15) |
+| `vendor/exifr.full.umd.js` | Đọc EXIF / GPS |
+| `worker/` | Cloudflare Worker: Google Drive, danh sách ảnh (KV), proxy ảnh |
+
+## Cài đặt Worker (một lần)
+
+1. Google Cloud Console → bật **Google Drive API** → tạo **OAuth client ID** loại *Web application*, thêm Authorized redirect URI:
+   `https://memories-api.hoangpham2263.workers.dev/oauth/callback`
+2. OAuth consent screen → **Publish app** (In production) để refresh token không hết hạn sau 7 ngày.
+3. Đặt secrets:
 
 ```bash
-python3 -m http.server 8000
-# Mở trình duyệt: http://localhost:8000
+cd worker
+npx wrangler secret put GOOGLE_CLIENT_ID
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+npx wrangler secret put ADMIN_PASSWORD
+npx wrangler deploy
 ```
 
-## Hướng dẫn kết nối Google Drive
+4. Mở trang, bấm biểu tượng ổ khóa, nhập mật khẩu quản lý → trang tự mở bước kết nối Google Drive.
 
-1. Truy cập [Google Cloud Console](https://console.cloud.google.com/) và tạo một Project mới.
-2. Vào **APIs & Services** > Bật **Google Drive API**.
-3. Vào **Credentials** > **Create Credentials** > **OAuth client ID**.
-4. Chọn loại ứng dụng: **Web application**.
-5. Bấm **+ ADD URI** tại mục **Authorized JavaScript origins** và thêm đủ 3 dòng riêng biệt:
-   - `https://hoangpham.is-a.dev`
-   - `http://localhost:3000`
-   - `http://localhost:8000`
-   *(Lưu ý: Không để dấu `/` ở cuối các đường dẫn)*
-6. Copy **Client ID** dán vào mục *Cấu hình Drive* trên giao diện web.
+## Công nghệ
 
-## License
-
-MIT © [Phạm Quốc Hoàng](https://hoangpham.is-a.dev)
+HTML, CSS, JavaScript thuần · Leaflet · exifr · heic2any · GitHub Pages · Cloudflare Workers + KV · Google Drive API

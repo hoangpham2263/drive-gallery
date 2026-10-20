@@ -3,407 +3,108 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hoang's Memories – Bản đồ Hành trình &amp; Kho Kỷ niệm</title>
-    <meta name="description" content="Bản đồ hành trình &amp; kho lưu trữ kỷ niệm du lịch qua ảnh của Hoàng Phạm. Tự động ghim toạ độ GPS, nhóm theo điểm đến và ngày tháng, đồng bộ Google Drive." />
+    <title>Hoang's Memories – Bản đồ hành trình</title>
+    <meta name="description" content="Bản đồ hành trình của Phạm Quốc Hoàng: những nơi đã đi qua ở Việt Nam, lưu lại bằng ảnh." />
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="brand/apple-touch-icon.png" />
-    <link rel="stylesheet" href="style.css?v=20261020_18" />
-    <!-- Leaflet CSS for Travel Map -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <!-- Leaflet JS for Travel Map -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <!-- EXIF & GPS Parser Library (Local) -->
-    <script src="vendor/exifr.full.umd.js"></script>
-    <!-- Google Identity Services -->
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <link rel="stylesheet" href="style.css?v=1" />
   </head>
   <body>
     <main class="wrap">
-      <!-- Header -->
       <header class="top">
-        <a class="brand" href="https://hoangpham.is-a.dev" title="HoangPham" aria-label="HoangPham">
-          <img src="brand/hp-icon.svg" alt="HoangPham" width="40" height="40" />
-        </a>
-        <div class="top-text">
-          <h1>Hoang's Memories</h1>
-          <p class="muted">Nhật ký Hành trình &amp; Bản đồ Kỷ niệm · Tự động ghim toạ độ GPS · Đồng bộ Google Drive</p>
-        </div>
-        <div class="top-actions">
-          <a class="ghost back" href="https://hoangpham.is-a.dev/tools">← Portfolio</a>
-          <a class="ghost" href="https://github.com/hoangpham2263/memories" target="_blank" rel="noopener">GitHub</a>
-        </div>
+        <a class="brand" href="https://hoangpham.is-a.dev" aria-label="HoangPham"><img src="brand/hp-icon.svg" alt="HoangPham" width="40" height="40" /></a>
+        <div class="top-text"><h1>Hoang's Memories</h1></div>
+        <button id="adminBtn" class="icon" type="button" title="Quản lý" aria-label="Quản lý">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        </button>
+        <a class="back" href="https://hoangpham.is-a.dev/tools">← Portfolio</a>
       </header>
 
-      <!-- Storage & Sync Bar -->
-      <div class="bar-strip">
-        <div class="bar-left">
-          <span id="connectionBadge" class="status-pill local">
-            <span class="status-dot"></span>
-            <span id="connectionText">Bộ nhớ thiết bị (Đã lưu)</span>
-          </span>
-          <button id="quickConnectDriveBtn" class="btn btn-outline btn-sm" type="button">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
-            Đồng bộ Google Drive
-          </button>
-          <a id="openDriveFolderBtn" class="btn btn-outline btn-sm" href="https://drive.google.com/" target="_blank" rel="noopener" hidden>
-            📁 Thư mục DriveGallery ↗
-          </a>
-        </div>
-        <div class="bar-right">
-          <button id="openConfigBtn" class="btn btn-outline btn-sm" type="button">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-            Cấu hình Drive
-          </button>
-        </div>
-      </div>
-
-      <!-- Compact Upload & Action Strip -->
-      <section class="upload-section">
-        <div id="dropzone" class="upload-compact-bar" role="button" tabindex="0">
-          <div class="upload-compact-left">
-            <div class="upload-icon-bubble">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-                <path d="m9 15 3-3 5 5"/>
-                <path d="m14 14 1-1 3 3"/>
-                <circle cx="9" cy="9" r="2"/>
-                <path d="M19 2v6"/>
-                <path d="M22 5h-6"/>
-              </svg>
-            </div>
-            <div class="upload-compact-info">
-              <div class="upload-compact-title">Thêm ảnh kỷ niệm vào bản đồ hành trình</div>
-              <div class="upload-compact-desc muted small">Kéo thả ảnh vào đây hoặc bấm để chọn • Tự động đọc GPS, EXIF máy ảnh &amp; ghim lên bản đồ</div>
-            </div>
+      <section class="card map-card">
+        <div class="map-head">
+          <div>
+            <h2>Bản đồ hành trình</h2>
+            <p class="muted small" id="visitedText">Đang tải…</p>
           </div>
-          <div class="upload-compact-right">
-            <span class="btn btn-primary btn-sm upload-action-btn">+ Tải ảnh lên</span>
+          <div class="actions" id="adminActions" hidden>
+            <button id="addBtn" class="primary" type="button">+ Thêm ảnh</button>
           </div>
         </div>
-        <input id="fileInput" type="file" accept="image/*,.heic,.heif" multiple hidden />
-
-        <!-- Uploading Queue -->
-        <div id="uploadQueue" class="upload-queue" hidden></div>
-      </section>
-
-      <!-- Global Drag Overlay -->
-      <div id="globalDropOverlay" class="global-drop-overlay" hidden>
-        <div class="drop-overlay-box">
-          <span class="drop-overlay-icon">📍</span>
-          <h3>Thả ảnh kỷ niệm vào đây</h3>
-          <p class="muted">Tự động trích xuất toạ độ GPS &amp; ghim lên bản đồ Việt Nam</p>
-        </div>
-      </div>
-
-      <!-- View Switcher Bar -->
-      <div class="view-switcher-bar">
-        <div class="view-tabs" role="tablist">
-          <button id="viewMapBtn" class="tab-btn active" type="button" role="tab" aria-selected="true">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" x2="9" y1="3" y2="18"/><line x1="15" x2="15" y1="6" y2="21"/></svg>
-            Bản đồ hành trình
-          </button>
-          <button id="viewGridBtn" class="tab-btn" type="button" role="tab" aria-selected="false">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
-            Lưới ảnh kỷ niệm
-          </button>
-          <button id="viewTimelineBtn" class="tab-btn" type="button" role="tab" aria-selected="false">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            Dòng thời gian
-          </button>
-        </div>
-
-        <div class="search-box mini-search">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="muted"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input id="searchInput" type="text" placeholder="Tìm kỷ niệm, điểm đến, máy ảnh..." />
-        </div>
-      </div>
-
-      <!-- Map View Section -->
-      <section id="mapSection" class="map-section">
-        <div class="map-wrapper">
-          <div id="travelMap" class="travel-map"></div>
-          
-          <!-- Interactive Map Pinning Floating Bar -->
-          <div id="mapPinningBar" class="map-pinning-bar" hidden>
-            <div class="pinning-bar-content">
-              <span class="pinning-pulse-icon">📍</span>
-              <span>Bấm vào vị trí bất kỳ trên bản đồ để ghim ảnh <strong id="mapPinningTitle"></strong></span>
+        <div class="progress"><span id="visitedBar"></span></div>
+        <div class="map-layout">
+          <div id="map" class="map" aria-label="Bản đồ Việt Nam 34 tỉnh, thành phố"></div>
+          <aside class="side">
+            <div class="side-head">
+              <strong id="sideTitle">Nơi đã đến</strong>
+              <button id="sideBack" class="link" type="button" hidden>← Tất cả</button>
             </div>
-            <button id="cancelMapPinningBtn" class="btn btn-outline btn-sm" type="button">Hủy ghim</button>
-          </div>
-          
-          <div class="map-overlay-header">
-            <div class="map-scope-switch" role="group" aria-label="Phạm vi hiển thị bản đồ">
-              <button id="scopeVietnamBtn" class="scope-pill active" type="button" title="Chế độ chữ S Việt Nam: Căn chỉnh &amp; giới hạn vùng lãnh thổ Việt Nam">
-                🇻🇳 Chữ S Việt Nam
-              </button>
-              <button id="scopeGlobalBtn" class="scope-pill" type="button" title="Chế độ Toàn cầu: Xem điểm đến trên toàn thế giới">
-                🌍 Toàn cầu
-              </button>
-            </div>
-            <span id="mapPlacesCount" class="map-overlay-badge">0 điểm đến</span>
-          </div>
-
-          <div class="map-overlay-controls">
-            <button id="mapPinLocationBtn" class="map-reset-btn" type="button" title="Ghim toạ độ cho ảnh kỷ niệm" style="background:#ff4d4f!important;border-color:#ff4d4f!important;color:#fff!important;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-              Ghim vị trí
-            </button>
-            <div class="map-layer-switch" role="group" aria-label="Kiểu bản đồ">
-              <button id="layerGoogleBtn" class="layer-pill active" type="button" title="Bản đồ Google Maps Việt Nam cực nét">🗺️ Google</button>
-              <button id="layerSatBtn" class="layer-pill" type="button" title="Vệ tinh Google kèm tên đường">🛰️ Vệ tinh</button>
-              <button id="layerTerrainBtn" class="layer-pill" type="button" title="Địa hình đồi núi sông ngòi">⛰️ Địa hình</button>
-              <button id="layerDarkBtn" class="layer-pill" type="button" title="Bản đồ ban đêm">🌙 Đêm</button>
-            </div>
-            <button id="resetMapZoomBtn" class="map-reset-btn" type="button" title="Xem toàn cảnh bản đồ">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
-              Toàn cảnh
-            </button>
-          </div>
-        </div>
-
-        <!-- Destinations drawer matching screenshot (89 cities visited / places cards) -->
-        <div class="destinations-drawer">
-          <div class="drawer-header">
-            <div class="drawer-title">
-              <span id="citiesVisitedCount" class="highlight-count">0</span> điểm đến đã ghé thăm
-            </div>
-            <div class="drawer-sub muted small">
-              Bấm vào từng điểm đến để xem chi tiết ảnh chụp tại đó
-            </div>
-          </div>
-          <div id="destinationsList" class="destinations-list">
-            <!-- Destination cards rendered by app.js -->
-          </div>
+            <div id="sideBody" class="side-body"></div>
+          </aside>
         </div>
       </section>
 
-      <!-- Photo Gallery Grid (Alternative View) -->
-      <section id="gallerySection" class="gallery-section" hidden>
-        <div class="toolbar" style="margin-bottom: 14px;">
-          <div class="toolbar-left">
-            <select id="folderSelect" class="select-input">
-              <option value="all">📁 Tất cả thư mục</option>
-              <option value="travel">✈️ Du lịch &amp; Khám phá</option>
-              <option value="work">💼 Công việc &amp; Dự án</option>
-              <option value="daily">☕ Đời sống thường ngày</option>
-            </select>
-          </div>
-
-          <div class="toolbar-right">
-            <select id="sortSelect" class="select-input">
-              <option value="date-desc">Mới nhất trước</option>
-              <option value="date-asc">Cũ nhất trước</option>
-              <option value="name-asc">Tên (A-Z)</option>
-              <option value="size-desc">Dung lượng lớn nhất</option>
-            </select>
-            <span id="statsLabel" class="muted small">Đang tải...</span>
-          </div>
+      <section class="card">
+        <div class="sec-head">
+          <h2>Dòng thời gian</h2>
+          <span id="photoCount" class="muted small"></span>
         </div>
-
-        <div id="galleryGrid" class="gallery">
-          <!-- Rendered by app.js -->
-        </div>
+        <div id="timeline" class="timeline"></div>
       </section>
 
-      <!-- Timeline View Section -->
-      <section id="timelineSection" class="timeline-section" hidden>
-        <div class="timeline-header">
-          <h3>Dòng thời gian các chuyến đi</h3>
-          <p class="muted small">Sắp xếp các bức ảnh theo từng mốc thời gian và điểm đến</p>
-        </div>
-        <div id="timelineContainer" class="timeline-container">
-          <!-- Rendered by app.js -->
-        </div>
-      </section>
-
-      <!-- How it works guide -->
       <details class="howto">
-        <summary>Công cụ hoạt động như thế nào?</summary>
+        <summary>Hướng dẫn sử dụng</summary>
         <ol>
-          <li><b>Trích xuất EXIF &amp; GPS ngay tại trình duyệt:</b> Khi bạn chọn ảnh, công cụ sử dụng thư viện xử lý metadata để đọc thông tin thiết bị (iPhone, Canon, Sony...), khẩu độ, tiêu cự, ISO và toạ độ GPS.</li>
-          <li><b>Tự động Reverse Geocoding:</b> Toạ độ GPS lập tức được chuyển đổi thành tên địa danh thực tế (phường, quận, thành phố, quốc gia) qua dịch vụ bản đồ mã nguồn mở miễn phí.</li>
-          <li><b>Lưu trữ Google Drive an toàn:</b> Dữ liệu ảnh và thông tin địa điểm được tải thẳng lên thư mục riêng trên tài khoản Google Drive của bạn (scope <code>drive.file</code>), không đi qua bất kỳ server trung gian nào.</li>
-          <li><b>Tạo link nhúng 1-click:</b> Nhận ngay direct link ảnh, cú pháp Markdown hoặc HTML tag để dán vào bài viết blog, portfolio hay tài liệu.</li>
+          <li>Bấm vào một tỉnh trên bản đồ (hoặc trong danh sách) để xem ảnh ở nơi đó.</li>
+          <li>Bấm vào ảnh để xem lớn, dùng phím ← → để chuyển ảnh.</li>
+          <li>Kéo bản đồ để di chuyển, cuộn hoặc chụm hai ngón để phóng to.</li>
         </ol>
       </details>
+
+      <footer class="muted small">Làm bởi <a href="https://hoangpham.is-a.dev" target="_blank" rel="noopener">Phạm Quốc Hoàng</a> · MIT</footer>
     </main>
 
-    <!-- Lightbox / Detail Modal -->
-    <div id="lightboxModal" class="modal-overlay" role="dialog" aria-modal="true">
-      <div class="lightbox-card">
-        <div class="lightbox-preview">
-          <img id="lightboxImg" src="" alt="Photo preview" />
+    <!-- Upload review -->
+    <dialog id="uploadDlg" class="dlg">
+      <form method="dialog" class="dlg-box">
+        <div class="dlg-head"><strong>Thêm ảnh</strong><button class="icon" value="cancel" aria-label="Đóng">✕</button></div>
+        <p class="muted small">Ảnh có GPS được gán tỉnh tự động. Ảnh không có GPS thì chọn tỉnh bên dưới.</p>
+        <div id="uploadList" class="up-list"></div>
+        <div class="actions">
+          <button value="cancel" type="submit">Hủy</button>
+          <button id="uploadGo" class="primary" type="button">Tải lên</button>
         </div>
+      </form>
+    </dialog>
 
-        <div class="lightbox-meta">
-          <div class="meta-header">
-            <div>
-              <h3 id="lightboxTitle">Tên ảnh</h3>
-              <p id="lightboxFolder" class="muted small">Thư mục</p>
+    <!-- Lightbox -->
+    <dialog id="viewer" class="viewer">
+      <div class="viewer-box">
+        <button class="icon viewer-close" type="button" id="viewerClose" aria-label="Đóng">✕</button>
+        <button class="icon viewer-nav prev" type="button" id="viewerPrev" aria-label="Ảnh trước">‹</button>
+        <img id="viewerImg" alt="" />
+        <button class="icon viewer-nav next" type="button" id="viewerNext" aria-label="Ảnh sau">›</button>
+        <div class="viewer-info">
+          <div id="viewerText"></div>
+          <form id="editForm" class="edit" hidden>
+            <input name="title" placeholder="Tiêu đề" />
+            <select name="province"></select>
+            <input name="takenAt" type="date" />
+            <textarea name="note" rows="2" placeholder="Ghi chú"></textarea>
+            <div class="actions">
+              <button id="deleteBtn" type="button">Xóa</button>
+              <button class="primary" type="submit">Lưu</button>
             </div>
-            <button id="closeLightboxBtn" class="ghost" type="button" aria-label="Đóng">✕</button>
-          </div>
-
-          <!-- Location Info -->
-          <div class="meta-section">
-            <span class="meta-label">Địa điểm chụp (GPS)</span>
-            <div id="lightboxLocation" class="meta-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-              <span>Chưa có thông tin vị trí</span>
-            </div>
-            <div id="lightboxMapLinkWrapper" hidden>
-              <a id="lightboxMapLink" class="small" href="#" target="_blank" rel="noopener">Xem trên Google Maps ↗</a>
-            </div>
-          </div>
-
-          <!-- Camera & Specs -->
-          <div class="meta-section">
-            <span class="meta-label">Thông số máy ảnh</span>
-            <div class="meta-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
-              <span id="lightboxCamera">iPhone 15 Pro</span>
-            </div>
-            <div class="meta-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
-              <span id="lightboxSettings">f/1.8 • 1/250s • ISO 100 • 24mm</span>
-            </div>
-          </div>
-
-          <!-- File info -->
-          <div class="meta-section">
-            <span class="meta-label">Chi tiết tệp</span>
-            <div class="meta-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
-              <span id="lightboxDate">20/10/2026 10:30</span>
-            </div>
-            <div class="meta-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
-              <span id="lightboxSize">3.2 MB • 4032 x 3024 px</span>
-            </div>
-          </div>
-
-          <!-- Links for embedding -->
-          <div class="meta-section">
-            <span class="meta-label">Nhúng nhanh (1-Click Copy)</span>
-            <div class="form-group">
-              <div class="link-box">
-                <input id="directLinkInput" type="text" readonly value="" />
-                <button id="copyDirectLinkBtn" class="btn btn-outline btn-sm" type="button">Copy Link</button>
-              </div>
-            </div>
-            <div class="form-group">
-              <div class="link-box">
-                <input id="markdownLinkInput" type="text" readonly value="" />
-                <button id="copyMarkdownBtn" class="btn btn-outline btn-sm" type="button">Copy MD</button>
-              </div>
-            </div>
-            <div class="form-group">
-              <div class="link-box">
-                <input id="htmlLinkInput" type="text" readonly value="" />
-                <button id="copyHtmlBtn" class="btn btn-outline btn-sm" type="button">Copy HTML</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Actions -->
-          <div class="card-actions" style="border:none; padding: 0;">
-            <a id="lightboxDriveLink" class="btn btn-outline btn-sm" href="#" target="_blank" rel="noopener">Mở trên Drive ↗</a>
-            <button id="deletePhotoBtn" class="btn btn-danger btn-sm" type="button">Xóa ảnh</button>
-          </div>
+          </form>
         </div>
       </div>
-    </div>
+    </dialog>
 
-    <!-- Location Picker Modal (Ghim / Đổi vị trí ảnh) -->
-    <div id="locationPickerModal" class="modal-overlay" role="dialog" aria-modal="true">
-      <div class="location-picker-modal">
-        <div class="meta-header">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <div class="loc-modal-icon">📍</div>
-            <div>
-              <h3 style="margin:0;font-size:16px;color:var(--fg);">Ghim vị trí kỷ niệm</h3>
-              <p id="locPickerPhotoTitle" class="muted small" style="margin:2px 0 0;"></p>
-            </div>
-          </div>
-          <button id="closeLocPickerBtn" class="ghost" type="button">✕</button>
-        </div>
+    <input id="fileInput" type="file" accept="image/*,.heic,.heif" multiple hidden />
 
-        <!-- Search Box for Location -->
-        <div class="loc-search-box">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input id="locSearchInput" type="text" placeholder="Tìm địa danh (VD: Sa Pa, Bãi Cháy, Hội An, Tokyo...)" />
-        </div>
-        <div id="locSearchResults" class="loc-search-results" hidden></div>
-
-        <!-- Interactive Pick on Map Button -->
-        <div class="loc-map-action-card">
-          <div class="loc-map-action-text">
-            <strong style="font-size:13px;color:var(--fg);">🗺️ Bấm chọn trực tiếp trên bản đồ</strong>
-            <span class="muted small">Mở bản đồ và click vào điểm bất kỳ để thả ghim chính xác</span>
-          </div>
-          <button id="locPickOnMapBtn" class="btn btn-primary btn-sm" type="button">Mở bản đồ ghim</button>
-        </div>
-
-        <!-- Popular Locations in Vietnam -->
-        <div class="loc-popular-section">
-          <div class="loc-popular-title">🇻🇳 Chọn nhanh địa điểm nổi tiếng:</div>
-          <div id="locPopularList" class="loc-popular-grid">
-            <!-- Rendered via JS -->
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Config Modal -->
-    <div id="configModal" class="modal-overlay" role="dialog" aria-modal="true">
-      <div class="config-modal">
-        <div class="meta-header">
-          <h3>Cấu hình kết nối Google Drive</h3>
-          <button id="closeConfigBtn" class="ghost" type="button">✕</button>
-        </div>
-
-        <p class="muted small">Kết nối trực tiếp tài khoản Google của bạn bằng OAuth 2.0. Ảnh và dữ liệu sẽ được lưu an toàn trong thư mục riêng trên Drive của bạn.</p>
-
-        <div class="form-group">
-          <label for="clientIdInput">Google OAuth Client ID:</label>
-          <input id="clientIdInput" type="text" placeholder="VD: xxxxx.apps.googleusercontent.com" />
-          <span class="muted small">Tạo miễn phí trong 1 phút tại Google Cloud Console (xem hướng dẫn bên dưới).</span>
-        </div>
-
-        <div class="form-group">
-          <label for="folderNameInput">Tên thư mục trên Drive:</label>
-          <input id="folderNameInput" type="text" value="DriveGallery" />
-        </div>
-
-        <div class="guide-box">
-          <b>Cách lấy Client ID miễn phí:</b>
-          <ol>
-            <li>Vào <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a> &gt; Tạo dự án mới.</li>
-            <li>Vào <b>APIs &amp; Services</b> &gt; Enable <b>Google Drive API</b>.</li>
-            <li>Vào <b>Credentials</b> &gt; <b>Create Credentials</b> &gt; <b>OAuth client ID</b>.</li>
-            <li>Chọn Application type: <b>Web application</b>.</li>
-            <li>Bấm <b>+ ADD URI</b> (Thêm URI) tại mục <b>Authorized JavaScript origins</b> và thêm đủ 3 dòng riêng biệt (không để dấu <code>/</code> ở cuối):
-              <br />• <code>https://hoangpham.is-a.dev</code>
-              <br />• <code>http://localhost:3000</code>
-              <br />• <code>http://localhost:8000</code>
-            </li>
-            <li>Copy <b>Client ID</b> dán vào ô bên trên và bấm Kết nối!</li>
-          </ol>
-        </div>
-
-        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap;">
-          <button id="disconnectBtn" class="btn btn-danger" type="button" hidden>Đăng xuất Drive</button>
-          <button id="resetDemoBtn" class="btn btn-outline" type="button">Khôi phục ảnh mẫu</button>
-          <button id="saveAndConnectBtn" class="btn btn-primary" type="button">Lưu &amp; Kết nối Google Drive</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Toast Notification -->
-    <div id="toast" class="toast">Đã sao chép vào bộ nhớ tạm!</div>
-
-    <script src="app.js?v=20261020_18"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script src="vendor/exifr.full.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
+    <script src="app.js?v=1"></script>
   </body>
 </html>

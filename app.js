@@ -1,2273 +1,480 @@
-// Drive Gallery — Google Drive Photo Manager with EXIF & Location Extractor
-// MIT License © Pham Quoc Hoang
+// Hoang's Memories — travel map of Vietnam (34 provinces, 2025) with photo milestones.
+// Photos and their metadata are served by the Cloudflare Worker in worker/ (Google Drive behind it).
+(() => {
+  const API = "https://memories-api.hoangpham2263.workers.dev";
+  const ABROAD = "Nước ngoài";
+  const PALETTE = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa", "#fb923c", "#2dd4bf", "#f87171", "#818cf8", "#a3e635"];
+  const ISLANDS = [
+    { name: "Quần đảo Hoàng Sa", sub: "(Đà Nẵng)", lat: 16.5, lng: 112.0 },
+    { name: "Quần đảo Trường Sa", sub: "(Khánh Hòa)", lat: 9.6, lng: 114.2 },
+  ];
 
-(function () {
-  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+    set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
+  };
 
-  // --- Constants & Storage Keys ---
-  const STORAGE_KEY_ITEMS = 'drive_gallery_items_v1';
-  const STORAGE_KEY_CONFIG = 'drive_gallery_config_v1';
-
-  // State
   let photos = [];
-  let currentFilter = 'all';
-  let searchQuery = '';
-  let sortBy = 'date-desc';
-  let activePhoto = null;
-  let accessToken = null;
-  let tokenClient = null;
-  let driveFolderId = null;
+  let geo = null;
+  let provinces = []; // names, sorted
+  let selected = null; // province name or null
+  let adminKey = store.get("mem-admin");
+  let map, layer;
+  const labels = {};
 
-  // View & Map State
-  let travelMap = null;
-  let markersLayer = null;
-  let markerMap = new Map();
-  let currentView = 'map';
+  // ---------- helpers ----------
+  let toastTimer;
+  function toast(text) {
+    let el = document.querySelector(".toast");
+    if (!el) { el = Object.assign(document.createElement("div"), { className: "toast", role: "status" }); document.body.append(el); }
+    el.textContent = text;
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
+  }
+  const el = (tag, props = {}, ...children) => {
+    const node = Object.assign(document.createElement(tag), props);
+    node.append(...children.filter((c) => c != null));
+    return node;
+  };
+  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const imgUrl = (p, size) => `${API}/api/img/${p.id}${size ? `?size=${size}` : ""}`;
+  const photoDate = (p) => p.takenAt || p.createdAt || "";
+  const fmtDate = (s) => {
+    if (!s) return "";
+    const d = new Date(s);
+    return isNaN(d) ? "" : d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+  };
+  const byProvince = () => {
+    const m = new Map();
+    for (const p of photos) if (p.province) m.set(p.province, [...(m.get(p.province) || []), p]);
+    return m;
+  };
 
-  // DOM Elements
-  const dropzone = document.getElementById('dropzone');
-  const fileInput = document.getElementById('fileInput');
-  const uploadQueue = document.getElementById('uploadQueue');
-  const galleryGrid = document.getElementById('galleryGrid');
-  const searchInput = document.getElementById('searchInput');
-  const folderSelect = document.getElementById('folderSelect');
-  const sortSelect = document.getElementById('sortSelect');
-  const statsLabel = document.getElementById('statsLabel');
-  const toast = document.getElementById('toast');
-
-  // View Switcher & Sections
-  const viewMapBtn = document.getElementById('viewMapBtn');
-  const viewGridBtn = document.getElementById('viewGridBtn');
-  const viewTimelineBtn = document.getElementById('viewTimelineBtn');
-  const mapSection = document.getElementById('mapSection');
-  const gallerySection = document.getElementById('gallerySection');
-  const timelineSection = document.getElementById('timelineSection');
-
-  // Map Elements
-  const travelMapEl = document.getElementById('travelMap');
-  const mapPlacesCount = document.getElementById('mapPlacesCount');
-  const resetMapZoomBtn = document.getElementById('resetMapZoomBtn');
-  const mapPinLocationBtn = document.getElementById('mapPinLocationBtn');
-  const layerGoogleBtn = document.getElementById('layerGoogleBtn');
-  const mapLayerSwitch = document.querySelector('.map-layer-switch');
-  const layerSatBtn = document.getElementById('layerSatBtn');
-  const layerTerrainBtn = document.getElementById('layerTerrainBtn');
-  const layerDarkBtn = document.getElementById('layerDarkBtn');
-  const scopeVietnamBtn = document.getElementById('scopeVietnamBtn');
-  const scopeGlobalBtn = document.getElementById('scopeGlobalBtn');
-  const citiesVisitedCount = document.getElementById('citiesVisitedCount');
-  const destinationsList = document.getElementById('destinationsList');
-  const timelineContainer = document.getElementById('timelineContainer');
-
-  // Location Picker & Map Pinning Elements
-  const mapPinningBar = document.getElementById('mapPinningBar');
-  const mapPinningTitle = document.getElementById('mapPinningTitle');
-  const cancelMapPinningBtn = document.getElementById('cancelMapPinningBtn');
-  const locationPickerModal = document.getElementById('locationPickerModal');
-  const closeLocPickerBtn = document.getElementById('closeLocPickerBtn');
-  const locPickerPhotoTitle = document.getElementById('locPickerPhotoTitle');
-  const locSearchInput = document.getElementById('locSearchInput');
-  const locSearchResults = document.getElementById('locSearchResults');
-  const locPickOnMapBtn = document.getElementById('locPickOnMapBtn');
-  const locPopularList = document.getElementById('locPopularList');
-
-  let activePickerPhoto = null;
-  let isMapPinningMode = false;
-  let searchDebounceTimer = null;
-
-  // Badges & Actions
-  const globalDropOverlay = document.getElementById('globalDropOverlay');
-  const openDriveFolderBtn = document.getElementById('openDriveFolderBtn');
-  const quickConnectDriveBtn = document.getElementById('quickConnectDriveBtn');
-  const connectionBadge = document.getElementById('connectionBadge');
-  const connectionText = document.getElementById('connectionText');
-
-  // Lightbox Modal
-  const lightboxModal = document.getElementById('lightboxModal');
-  const lightboxImg = document.getElementById('lightboxImg');
-  const lightboxTitle = document.getElementById('lightboxTitle');
-  const lightboxFolder = document.getElementById('lightboxFolder');
-  const lightboxLocation = document.getElementById('lightboxLocation');
-  const lightboxMapLink = document.getElementById('lightboxMapLink');
-  const lightboxMapLinkWrapper = document.getElementById('lightboxMapLinkWrapper');
-  const lightboxCamera = document.getElementById('lightboxCamera');
-  const lightboxSettings = document.getElementById('lightboxSettings');
-  const lightboxDate = document.getElementById('lightboxDate');
-  const lightboxSize = document.getElementById('lightboxSize');
-  const lightboxDriveLink = document.getElementById('lightboxDriveLink');
-  const closeLightboxBtn = document.getElementById('closeLightboxBtn');
-  const deletePhotoBtn = document.getElementById('deletePhotoBtn');
-
-  // Copy Link Inputs
-  const directLinkInput = document.getElementById('directLinkInput');
-  const markdownLinkInput = document.getElementById('markdownLinkInput');
-  const htmlLinkInput = document.getElementById('htmlLinkInput');
-  const copyDirectLinkBtn = document.getElementById('copyDirectLinkBtn');
-  const copyMarkdownBtn = document.getElementById('copyMarkdownBtn');
-  const copyHtmlBtn = document.getElementById('copyHtmlBtn');
-
-  // Config Modal
-  const configModal = document.getElementById('configModal');
-  const openConfigBtn = document.getElementById('openConfigBtn');
-  const closeConfigBtn = document.getElementById('closeConfigBtn');
-  const clientIdInput = document.getElementById('clientIdInput');
-  const folderNameInput = document.getElementById('folderNameInput');
-  const saveAndConnectBtn = document.getElementById('saveAndConnectBtn');
-  const resetDemoBtn = document.getElementById('resetDemoBtn');
-  const disconnectBtn = document.getElementById('disconnectBtn');
-
-  // Default Demo Photos (Real landscapes with GPS and EXIF)
-  const DEMO_PHOTOS = [
-    {
-      id: 'demo-1',
-      title: 'Hoàng hôn Hồ Hoàn Kiếm',
-      url: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1600&q=80',
-      directUrl: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1600&q=80',
-      driveLink: 'https://drive.google.com/',
-      folder: 'travel',
-      size: 3245000,
-      width: 4032,
-      height: 3024,
-      date: '2026-10-18T17:45:00.000Z',
-      camera: 'Apple iPhone 15 Pro',
-      settings: 'f/1.78 • 1/320s • ISO 64 • 24mm',
-      location: 'Hoàn Kiếm, Hà Nội, Việt Nam',
-      gps: { lat: 21.0285, lng: 105.8542 }
-    },
-    {
-      id: 'demo-2',
-      title: 'Cầu Rồng lung linh về đêm',
-      url: 'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?auto=format&fit=crop&w=1600&q=80',
-      directUrl: 'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?auto=format&fit=crop&w=1600&q=80',
-      driveLink: 'https://drive.google.com/',
-      folder: 'travel',
-      size: 5120000,
-      width: 6000,
-      height: 4000,
-      date: '2026-09-24T20:15:30.000Z',
-      camera: 'Sony ILCE-7M4 (A7 IV)',
-      settings: 'f/2.8 • 1/60s • ISO 1600 • 35mm',
-      location: 'Hải Châu, Đà Nẵng, Việt Nam',
-      gps: { lat: 16.0612, lng: 108.2272 }
-    },
-    {
-      id: 'demo-3',
-      title: 'Mù Cang Chải mùa lúa chín',
-      url: 'https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=1600&q=80',
-      directUrl: 'https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=1600&q=80',
-      driveLink: 'https://drive.google.com/',
-      folder: 'travel',
-      size: 4780000,
-      width: 5472,
-      height: 3648,
-      date: '2026-09-12T06:30:00.000Z',
-      camera: 'Canon EOS R5',
-      settings: 'f/8.0 • 1/200s • ISO 100 • 50mm',
-      location: 'Mù Cang Chải, Yên Bái, Việt Nam',
-      gps: { lat: 21.8488, lng: 104.0833 }
-    },
-    {
-      id: 'demo-4',
-      title: 'Phố đi bộ Nguyễn Huệ nhộn nhịp',
-      url: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?auto=format&fit=crop&w=1600&q=80',
-      directUrl: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?auto=format&fit=crop&w=1600&q=80',
-      driveLink: 'https://drive.google.com/',
-      folder: 'daily',
-      size: 2890000,
-      width: 4000,
-      height: 3000,
-      date: '2026-08-30T19:05:00.000Z',
-      camera: 'Fujifilm X-T5',
-      settings: 'f/1.4 • 1/125s • ISO 400 • 35mm',
-      location: 'Quận 1, TP. Hồ Chí Minh, Việt Nam',
-      gps: { lat: 10.7743, lng: 106.7029 }
-    },
-    {
-      id: 'demo-5',
-      title: 'Bãi Sao biển xanh ngát',
-      url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1600&q=80',
-      directUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1600&q=80',
-      driveLink: 'https://drive.google.com/',
-      folder: 'travel',
-      size: 3410000,
-      width: 4032,
-      height: 3024,
-      date: '2026-07-15T15:20:00.000Z',
-      camera: 'Apple iPhone 15 Pro',
-      settings: 'f/2.2 • 1/500s • ISO 50 • 13mm',
-      location: 'An Thới, Phú Quốc, Kiên Giang, Việt Nam',
-      gps: { lat: 10.0538, lng: 104.0326 }
-    },
-    {
-      id: 'demo-6',
-      title: 'Góc làm việc & Setup Code',
-      url: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=1600&q=80',
-      directUrl: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=1600&q=80',
-      driveLink: 'https://drive.google.com/',
-      folder: 'work',
-      size: 1950000,
-      width: 3840,
-      height: 2160,
-      date: '2026-10-15T14:10:00.000Z',
-      camera: 'MacBook Pro Camera',
-      settings: 'f/2.0 • 1/60s • ISO 200',
-      location: 'Hà Nội, Việt Nam',
-      gps: { lat: 21.0285, lng: 105.8542 }
-    }
-  ];
-
-  // Popular Vietnam destinations for 1-click GPS assignment
-  const POPULAR_LOCATIONS = [
-    { name: 'Hà Nội', fullName: 'Hoàn Kiếm, Hà Nội, Việt Nam', lat: 21.0285, lng: 105.8542 },
-    { name: 'Hạ Long', fullName: 'Hạ Long, Quảng Ninh, Việt Nam', lat: 20.9599, lng: 107.0425 },
-    { name: 'Sa Pa', fullName: 'Sa Pa, Lào Cai, Việt Nam', lat: 22.3364, lng: 103.8438 },
-    { name: 'Hà Giang', fullName: 'Đồng Văn, Hà Giang, Việt Nam', lat: 23.2789, lng: 105.3625 },
-    { name: 'Ninh Bình', fullName: 'Tràng An, Ninh Bình, Việt Nam', lat: 20.2506, lng: 105.9744 },
-    { name: 'Đà Nẵng', fullName: 'Hải Châu, Đà Nẵng, Việt Nam', lat: 16.0612, lng: 108.2272 },
-    { name: 'Hội An', fullName: 'Hội An, Quảng Nam, Việt Nam', lat: 15.8801, lng: 108.3380 },
-    { name: 'Huế', fullName: 'Kinh thành Huế, Thừa Thiên Huế, Việt Nam', lat: 16.4637, lng: 107.5909 },
-    { name: 'Quy Nhơn', fullName: 'Quy Nhơn, Bình Định, Việt Nam', lat: 13.7820, lng: 109.2197 },
-    { name: 'Nha Trang', fullName: 'Nha Trang, Khánh Hòa, Việt Nam', lat: 12.2388, lng: 109.1967 },
-    { name: 'Đà Lạt', fullName: 'Đà Lạt, Lâm Đồng, Việt Nam', lat: 11.9404, lng: 108.4583 },
-    { name: 'Phan Thiết / Mũi Né', fullName: 'Mũi Né, Phan Thiết, Bình Thuận, Việt Nam', lat: 10.9333, lng: 108.2833 },
-    { name: 'TP. Hồ Chí Minh', fullName: 'Quận 1, TP. Hồ Chí Minh, Việt Nam', lat: 10.7743, lng: 106.7029 },
-    { name: 'Vũng Tàu', fullName: 'Vũng Tàu, Bà Rịa - Vũng Tàu, Việt Nam', lat: 10.3460, lng: 107.0843 },
-    { name: 'Cần Thơ', fullName: 'Ninh Kiều, Cần Thơ, Việt Nam', lat: 10.0452, lng: 105.7469 },
-    { name: 'Phú Quốc', fullName: 'An Thới, Phú Quốc, Kiên Giang, Việt Nam', lat: 10.0538, lng: 104.0326 }
-  ];
-
-  // --- Helper Functions ---
-  function showToast(msg) {
-    if (!toast) return;
-    toast.textContent = msg;
-    toast.classList.add('show');
-    clearTimeout(toast._timer);
-    toast._timer = setTimeout(() => {
-      toast.classList.remove('show');
-    }, 2400);
+  async function api(path, opts = {}) {
+    const headers = { ...(opts.headers || {}) };
+    if (adminKey) headers["x-admin-key"] = adminKey;
+    const r = await fetch(API + path, { ...opts, headers });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `Lỗi ${r.status}`);
+    return data;
   }
 
-  function formatBytes(bytes) {
-    if (!bytes || bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  }
-
-  function formatDate(isoStr) {
-    if (!isoStr) return '';
-    try {
-      const d = new Date(isoStr);
-      return d.toLocaleDateString('vi-VN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch (e) {
-      return isoStr;
-    }
-  }
-
-  function loadSavedConfig() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_CONFIG);
-      return raw ? JSON.parse(raw) : {};
-    } catch (e) {
-      return {};
-    }
-  }
-
-  function saveConfig(cfg) {
-    localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(cfg));
-  }
-
-  function loadPhotos() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_ITEMS);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          photos = parsed;
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn('Error reading stored photos', e);
-    }
-    // Sample items for initial exploration
-    photos = [...DEMO_PHOTOS];
-  }
-
-  function savePhotos() {
-    try {
-      localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(photos));
-    } catch (e) {
-      console.warn('Storage quota exceeded, keeping in memory', e);
-    }
-  }
-
-  // --- Reverse Geocoding (Convert GPS Lat/Lng to Location Name) ---
-  async function reverseGeocode(lat, lng) {
-    if (!lat || !lng) return null;
-    try {
-      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=14&addressdetails=1`;
-      const res = await fetch(url, {
-        headers: { 'Accept-Language': 'vi,en;q=0.9' }
-      });
-      if (!res.ok) throw new Error('Geocoding response failed');
-      const data = await res.json();
-      if (!data || !data.address) return null;
-
-      const addr = data.address;
-      const parts = [];
-      const sub = addr.suburb || addr.quarter || addr.neighbourhood || addr.road;
-      const city = addr.city || addr.town || addr.county || addr.state;
-      const country = addr.country || 'Việt Nam';
-
-      if (sub) parts.push(sub);
-      if (city && city !== sub) parts.push(city);
-      if (country) parts.push(country);
-
-      return parts.join(', ');
-    } catch (err) {
-      console.warn('Reverse geocode fallback:', err);
-      return `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`;
-    }
-  }
-
-  // --- Format Camera Settings from EXIF ---
-  function formatExifSettings(exif) {
-    if (!exif) return 'Chưa có thông số';
-    const parts = [];
-    if (exif.FNumber) parts.push(`f/${exif.FNumber}`);
-    if (exif.ExposureTime) {
-      if (exif.ExposureTime < 1) {
-        parts.push(`1/${Math.round(1 / exif.ExposureTime)}s`);
-      } else {
-        parts.push(`${exif.ExposureTime}s`);
-      }
-    }
-    if (exif.ISO || exif.ISOSpeedRatings) parts.push(`ISO ${exif.ISO || exif.ISOSpeedRatings}`);
-    if (exif.FocalLength) parts.push(`${Math.round(exif.FocalLength)}mm`);
-    return parts.length ? parts.join(' • ') : 'Thông số tiêu chuẩn';
-  }
-
-  function formatCameraName(exif) {
-    if (!exif) return 'Không rõ thiết bị';
-    const make = exif.Make || '';
-    const model = exif.Model || '';
-    if (model.includes(make)) return model.trim();
-    return `${make} ${model}`.trim() || 'Camera';
-  }
-
-  // --- Travel Map (Pure SVG Vietnam 64-Province Vector Map + Global Google Maps Switcher) ---
-  const VIETNAM_BOUNDS = [[8.18, 102.14], [23.39, 109.46]];
-  const VIETNAM_MAX_BOUNDS = [[7.0, 99.5], [25.0, 114.5]];
-  let currentMapScope = localStorage.getItem('travel_memories_map_scope') || 'vietnam';
-  
-  let vnProvincesGeoData = null;
-  let vnProvincesLayer = null;
-  let googleStreetLayer = null;
-  let googleHybridLayer = null;
-  let googleTerrainLayer = null;
-  let darkLayer = null;
-  let currentLayerType = 'google';
-
-  function isLocationInVietnam(lat, lng) {
-    return (lat >= 8.0 && lat <= 24.0 && lng >= 102.0 && lng <= 110.5);
-  }
-
-  // Standard ray-casting point in polygon algorithm
-  function pointInPolygon(point, vs) {
-    const x = point[0], y = point[1];
+  // ---------- geometry ----------
+  function inRing(x, y, ring) {
     let inside = false;
-    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-      const xi = vs[i][0], yi = vs[i][1];
-      const xj = vs[j][0], yj = vs[j][1];
-      const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-      if (intersect) inside = !inside;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i], [xj, yj] = ring[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
     }
     return inside;
   }
-
-  // Count photos for a given province using point-in-polygon & smart location matching
-  function getProvincePhotoCount(provinceName, feature) {
-    if (!photos || photos.length === 0) return 0;
-    const pNameNorm = (provinceName || '').toLowerCase().trim();
-    let count = 0;
-
-    photos.forEach((photo) => {
-      const coords = getPhotoLatLng(photo);
-      // 1. Check exact GPS coordinates inside province polygon
-      if (coords && feature && feature.geometry) {
-        const geom = feature.geometry;
-        if (geom.type === 'Polygon') {
-          if (pointInPolygon([coords.lng, coords.lat], geom.coordinates[0])) {
-            count++;
-            return;
-          }
-        } else if (geom.type === 'MultiPolygon') {
-          for (let poly of geom.coordinates) {
-            if (pointInPolygon([coords.lng, coords.lat], poly[0])) {
-              count++;
-              return;
-            }
-          }
-        }
-      }
-
-      // 2. Fallback check photo location string
-      if (photo.location) {
-        const locNorm = photo.location.toLowerCase();
-        if (locNorm.includes(pNameNorm)) {
-          count++;
-        } else if (pNameNorm.includes('hồ chí minh') && (locNorm.includes('sài gòn') || locNorm.includes('tp.hcm') || locNorm.includes('tphcm'))) {
-          count++;
-        } else if (pNameNorm.includes('đà nẵng') && locNorm.includes('da nang')) {
-          count++;
-        } else if (pNameNorm.includes('hà nội') && (locNorm.includes('ha noi') || locNorm.includes('hanoi'))) {
-          count++;
-        }
-      }
-    });
-
-    return count;
-  }
-
-  async function loadVietnamProvincesGeo() {
-    if (vnProvincesGeoData) return vnProvincesGeoData;
-    try {
-      const res = await fetch('vietnam-provinces.json?v=20261020_15');
-      if (!res.ok) throw new Error('Không thể tải file GeoJSON bản đồ');
-      vnProvincesGeoData = await res.json();
-      return vnProvincesGeoData;
-    } catch (e) {
-      console.warn('Lỗi tải GeoJSON tỉnh thành Việt Nam:', e);
-      return null;
-    }
-  }
-
-  // Render pure SVG Vietnam 64-province vector map (Gody travel scratch-map style)
-  async function renderVietnamVectorMap() {
-    if (!travelMap) return;
-    const geoData = await loadVietnamProvincesGeo();
-    if (!geoData) return;
-
-    if (vnProvincesLayer && travelMap.hasLayer(vnProvincesLayer)) {
-      travelMap.removeLayer(vnProvincesLayer);
-    }
-
-    let visitedCount = 0;
-    const totalCount = geoData.features.length;
-
-    geoData.features.forEach((f) => {
-      if (getProvincePhotoCount(f.properties.name, f) > 0) {
-        visitedCount++;
-      }
-    });
-
-    vnProvincesLayer = L.geoJSON(geoData, {
-      style: (feature) => {
-        const count = getProvincePhotoCount(feature.properties.name, feature);
-        const isVisited = count > 0;
-        return {
-          fillColor: isVisited ? '#ff4d4f' : '#ffffff',
-          fillOpacity: isVisited ? 0.92 : 0.96,
-          color: isVisited ? '#d9363e' : '#cbd5e1',
-          weight: isVisited ? 1.6 : 1,
-          dashArray: null
-        };
-      },
-      onEachFeature: (feature, layer) => {
-        const pName = feature.properties.name;
-        const count = getProvincePhotoCount(pName, feature);
-
-        layer.bindTooltip(`
-          <div style="font-weight:600;font-size:13px;color:#fff;">🇻🇳 ${pName}</div>
-          <div style="font-size:11px;color:#cbd5e1;margin-top:2px;">
-            ${count > 0 ? `📸 ${count} ảnh kỷ niệm` : 'Chưa có ảnh check-in'}
-          </div>
-        `, {
-          className: 'vn-province-tooltip',
-          sticky: true,
-          direction: 'top'
-        });
-
-        layer.on({
-          mouseover: (e) => {
-            const l = e.target;
-            const c = getProvincePhotoCount(pName, feature);
-            l.setStyle({
-              fillColor: c > 0 ? '#ff1744' : '#f8fafc',
-              fillOpacity: 1,
-              weight: 2,
-              color: '#d63031'
-            });
-            l.bringToFront();
-          },
-          mouseout: (e) => {
-            if (vnProvincesLayer) vnProvincesLayer.resetStyle(e.target);
-          },
-          click: (e) => {
-            if (isMapPinningMode && activePickerPhoto) {
-              const latlng = e.latlng;
-              assignLocationToPhoto(activePickerPhoto.id, {
-                name: pName,
-                fullName: `${pName}, Việt Nam`,
-                lat: latlng.lat,
-                lng: latlng.lng
-              });
-              cancelMapPinning();
-              return;
-            }
-            travelMap.setView(e.latlng, 7);
-          }
-        });
-      }
-    });
-
-    if (currentMapScope === 'vietnam') {
-      vnProvincesLayer.addTo(travelMap);
-      if (mapPlacesCount) {
-        const pct = Math.round((visitedCount / totalCount) * 100);
-        mapPlacesCount.textContent = `🇻🇳 ${visitedCount}/${totalCount} tỉnh thành (${pct}%)`;
+  function provinceAt(lat, lng) {
+    if (!geo || lat == null || lng == null) return null;
+    for (const f of geo.features) {
+      const polys = f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates;
+      for (const poly of polys) {
+        if (inRing(lng, lat, poly[0]) && !poly.slice(1).some((hole) => inRing(lng, lat, hole))) return f.properties.name;
       }
     }
+    return null;
   }
 
-  function flyToMapLocation(lat, lng, zoom = 13) {
-    if (!travelMap) return;
-    if (!isLocationInVietnam(lat, lng) && currentMapScope === 'vietnam') {
-      switchMapScope('global');
-    }
-    const targetZoom = (currentMapScope === 'vietnam') ? Math.min(zoom, 7.5) : zoom;
-    travelMap.flyTo([lat, lng], targetZoom, { duration: 1.2 });
+  // ---------- map ----------
+  function colorOf(name) {
+    const i = provinces.indexOf(name);
+    return PALETTE[(i < 0 ? 0 : i) % PALETTE.length];
   }
 
-  function initTravelMap() {
-    if (travelMap || !window.L || !travelMapEl) return;
-    try {
-      const isVN = (currentMapScope === 'vietnam');
-      travelMap = L.map('travelMap', {
-        center: isVN ? [16.1, 107.5] : [20.0, 10.0],
-        zoom: isVN ? 6 : 2.5,
-        minZoom: isVN ? 5.2 : 2,
-        maxZoom: isVN ? 8.5 : 20,
-        maxBounds: isVN ? VIETNAM_MAX_BOUNDS : null,
-        maxBoundsViscosity: 0.85,
-        zoomControl: true,
-        scrollWheelZoom: true
-      });
-
-      // 1. Google Maps Vietnam (Standard Street - Ultra-sharp @2x Retina, official Vietnamese labels)
-      googleStreetLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&hl=vi&x={x}&y={y}&z={z}&scale=2', {
-        subdomains: ['0', '1', '2', '3'],
-        attribution: '&copy; Google Maps',
-        maxZoom: 20
-      });
-
-      // 2. Google Hybrid (Real Satellite + Sharp @2x Retina Vietnamese roads & place names)
-      googleHybridLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&hl=vi&x={x}&y={y}&z={z}&scale=2', {
-        subdomains: ['0', '1', '2', '3'],
-        attribution: '&copy; Google Maps Vệ tinh',
-        maxZoom: 20
-      });
-
-      // 3. Google Terrain (Elevation & mountains + @2x Retina Vietnamese labels)
-      googleTerrainLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=p&hl=vi&x={x}&y={y}&z={z}&scale=2', {
-        subdomains: ['0', '1', '2', '3'],
-        attribution: '&copy; Google Maps Địa hình',
-        maxZoom: 20
-      });
-
-      // 4. Dark Midnight Mode
-      darkLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        className: 'map-tiles-midnight',
-        maxZoom: 18
-      });
-
-      markersLayer = L.layerGroup().addTo(travelMap);
-
-      if (layerGoogleBtn) layerGoogleBtn.addEventListener('click', () => switchMapLayer('google'));
-      if (layerSatBtn) layerSatBtn.addEventListener('click', () => switchMapLayer('sat'));
-      if (layerTerrainBtn) layerTerrainBtn.addEventListener('click', () => switchMapLayer('terrain'));
-      if (layerDarkBtn) layerDarkBtn.addEventListener('click', () => switchMapLayer('dark'));
-
-      if (scopeVietnamBtn) scopeVietnamBtn.addEventListener('click', () => switchMapScope('vietnam'));
-      if (scopeGlobalBtn) scopeGlobalBtn.addEventListener('click', () => switchMapScope('global'));
-
-      if (resetMapZoomBtn) {
-        resetMapZoomBtn.addEventListener('click', fitMapToBounds);
-      }
-
-      // Map click handler for interactive location pinning
-      travelMap.on('click', onMapClick);
-
-      switchMapScope(currentMapScope);
-    } catch (e) {
-      console.warn('Error initTravelMap', e);
-    }
-  }
-
-  function switchMapScope(scope) {
-    currentMapScope = scope;
-    try {
-      localStorage.setItem('travel_memories_map_scope', scope);
-    } catch (e) {}
-
-    if (scopeVietnamBtn) scopeVietnamBtn.classList.toggle('active', scope === 'vietnam');
-    if (scopeGlobalBtn) scopeGlobalBtn.classList.toggle('active', scope === 'global');
-
-    if (!travelMap) return;
-
-    if (scope === 'vietnam') {
-      // 1. Pure SVG Vietnam Mode: Clean vector map, NO Google tiles, NO foreign countries
-      if (travelMapEl) travelMapEl.classList.add('vietnam-mode');
-      if (mapLayerSwitch) mapLayerSwitch.hidden = true;
-
-      // Remove all raster layers
-      [googleStreetLayer, googleHybridLayer, googleTerrainLayer, darkLayer].forEach(layer => {
-        if (layer && travelMap.hasLayer(layer)) travelMap.removeLayer(layer);
-      });
-
-      travelMap.options.minZoom = 5.2;
-      travelMap.options.maxZoom = 8.5;
-      travelMap.setMaxBounds(VIETNAM_MAX_BOUNDS);
-
-      renderVietnamVectorMap();
-      travelMap.setView([16.1, 107.5], 6);
-    } else {
-      // 2. Global Mode: Re-enable world raster layers
-      if (travelMapEl) travelMapEl.classList.remove('vietnam-mode');
-      if (mapLayerSwitch) mapLayerSwitch.hidden = false;
-
-      // Remove Vietnam vector layer
-      if (vnProvincesLayer && travelMap.hasLayer(vnProvincesLayer)) {
-        travelMap.removeLayer(vnProvincesLayer);
-      }
-
-      travelMap.setMaxBounds(null);
-      travelMap.options.minZoom = 2;
-      travelMap.options.maxZoom = 20;
-
-      switchMapLayer(currentLayerType);
-
-      if (mapPlacesCount) {
-        const gpsPhotos = photos.filter(p => getPhotoLatLng(p) !== null);
-        mapPlacesCount.textContent = `${gpsPhotos.length} điểm toàn cầu`;
-      }
-      fitMapToBounds();
-    }
-  }
-
-  function switchMapLayer(type) {
-    if (!travelMap) return;
-    currentLayerType = type;
-    [layerGoogleBtn, layerSatBtn, layerTerrainBtn, layerDarkBtn].forEach(btn => btn && btn.classList.remove('active'));
-
-    [googleStreetLayer, googleHybridLayer, googleTerrainLayer, darkLayer].forEach(layer => {
-      if (layer && travelMap.hasLayer(layer)) travelMap.removeLayer(layer);
-    });
-
-    if (type === 'sat' && googleHybridLayer) {
-      googleHybridLayer.addTo(travelMap);
-      if (layerSatBtn) layerSatBtn.classList.add('active');
-    } else if (type === 'terrain' && googleTerrainLayer) {
-      googleTerrainLayer.addTo(travelMap);
-      if (layerTerrainBtn) layerTerrainBtn.classList.add('active');
-    } else if (type === 'dark' && darkLayer) {
-      darkLayer.addTo(travelMap);
-      if (layerDarkBtn) layerDarkBtn.classList.add('active');
-    } else if (googleStreetLayer) {
-      googleStreetLayer.addTo(travelMap);
-      if (layerGoogleBtn) layerGoogleBtn.classList.add('active');
-    }
-  }
-
-  function fitMapToBounds() {
-    if (!travelMap || !markersLayer) return;
-
-    if (currentMapScope === 'vietnam') {
-      travelMap.setView([16.1, 107.5], 6);
-      return;
-    }
-
-    const bounds = [];
-    markersLayer.eachLayer((marker) => {
-      bounds.push(marker.getLatLng());
-    });
-      // Global
-      if (bounds.length === 1) {
-        travelMap.setView(bounds[0], 10);
-      } else if (bounds.length > 1) {
-        travelMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
-      } else {
-        travelMap.setView([20.0, 10.0], 2.5);
-      }
-  }
-
-  function getPhotoLatLng(p) {
-    if (!p || !p.gps) return null;
-    const rawLat = p.gps.lat !== undefined ? p.gps.lat : p.gps.latitude;
-    const rawLng = p.gps.lng !== undefined ? p.gps.lng : p.gps.longitude;
-    const lat = typeof rawLat === 'number' ? rawLat : parseFloat(rawLat);
-    const lng = typeof rawLng === 'number' ? rawLng : parseFloat(rawLng);
-    if (isNaN(lat) || isNaN(lng)) return null;
-    return { lat, lng };
-  }
-
-  function clusterGpsPhotos(gpsPhotos) {
-    const clusters = [];
-    gpsPhotos.forEach((photo) => {
-      const coords = getPhotoLatLng(photo);
-      if (!coords) return;
-      let found = clusters.find(c => {
-        const dLat = Math.abs(c.lat - coords.lat);
-        const dLng = Math.abs(c.lng - coords.lng);
-        return (dLat < 0.008 && dLng < 0.008);
-      });
-      if (found) {
-        found.photos.push(photo);
-      } else {
-        clusters.push({
-          lat: coords.lat,
-          lng: coords.lng,
-          name: photo.location || 'Địa điểm kỷ niệm',
-          photos: [photo]
-        });
-      }
-    });
-    return clusters;
-  }
-
-  function renderMapMarkers() {
-    if (!travelMap || !markersLayer || !window.L) return;
-    markersLayer.clearLayers();
-    markerMap.clear();
-
-    const gpsPhotos = photos.filter(p => getPhotoLatLng(p) !== null);
-    const vnPhotos = gpsPhotos.filter(p => {
-      const c = getPhotoLatLng(p);
-      return isLocationInVietnam(c.lat, c.lng);
-    });
-
-    if (mapPlacesCount) {
-      if (currentMapScope === 'vietnam') {
-        mapPlacesCount.textContent = `${vnPhotos.length} điểm tại VN`;
-      } else {
-        mapPlacesCount.textContent = `${gpsPhotos.length} điểm toàn cầu`;
-      }
-    }
-
-    const clusters = clusterGpsPhotos(gpsPhotos);
-
-    clusters.forEach((cluster) => {
-      const isMulti = cluster.photos.length > 1;
-      const firstPhoto = cluster.photos[0];
-
-      const pinIcon = L.divIcon({
-        className: 'map-photo-pin',
-        html: `
-          <div class="pin-wrapper" title="${cluster.name} (${cluster.photos.length} ảnh)">
-            <div class="pin-pulse"></div>
-            <div class="pin-ring">
-              <div class="pin-dot"></div>
-              ${isMulti ? `<span class="pin-count-badge">${cluster.photos.length}</span>` : ''}
-            </div>
-          </div>
-        `,
-        iconSize: [34, 34],
-        iconAnchor: [17, 17],
-        popupAnchor: [0, -17]
-      });
-
-      const marker = L.marker([cluster.lat, cluster.lng], { icon: pinIcon });
-
-      let popupHtml = '';
-      if (!isMulti) {
-        popupHtml = `
-          <div class="map-popup-card">
-            <div class="map-popup-media">
-              <img src="${firstPhoto.url}" alt="${firstPhoto.title}" loading="lazy" />
-            </div>
-            <div class="map-popup-body">
-              <h4 class="map-popup-title">${firstPhoto.title}</h4>
-              <div class="map-popup-meta">
-                <span>📍 ${firstPhoto.location || 'Địa điểm chưa đặt tên'}</span>
-                <span>📅 ${formatDate(firstPhoto.date)}</span>
-                <span>📷 ${firstPhoto.camera || 'Thiết bị chụp'}</span>
-              </div>
-              <div style="display:flex;gap:6px;margin-top:6px;">
-                <button class="map-popup-btn map-view-detail-btn" type="button" style="flex:1;">Xem ảnh chi tiết</button>
-                <button class="map-popup-btn map-change-loc-btn" type="button" style="width:auto;padding:5px 8px;" title="Đổi vị trí ghim">📍</button>
-              </div>
-            </div>
-          </div>
-        `;
-      } else {
-        popupHtml = `
-          <div class="cluster-popup-card">
-            <div class="cluster-popup-header">
-              <span>📍 ${cluster.name}</span>
-              <span class="muted small" style="margin-left:auto;">${cluster.photos.length} ảnh</span>
-            </div>
-            <div class="cluster-popup-list">
-              ${cluster.photos.map(p => `
-                <div class="cluster-popup-item" data-photo-id="${p.id}">
-                  <img src="${p.url}" alt="${p.title}" class="cluster-popup-thumb" loading="lazy" />
-                  <div class="cluster-popup-info">
-                    <span class="cluster-popup-title">${p.title}</span>
-                    <span class="cluster-popup-sub">${formatDate(p.date)}</span>
-                  </div>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        `;
-      }
-
-      marker.bindPopup(popupHtml, { maxWidth: 280 });
-      marker.on('popupopen', (e) => {
-        const popupEl = e.popup.getElement();
-        if (!popupEl) return;
-
-        if (!isMulti) {
-          const detailBtn = popupEl.querySelector('.map-view-detail-btn');
-          if (detailBtn) detailBtn.onclick = () => openLightbox(firstPhoto);
-          const changeLocBtn = popupEl.querySelector('.map-change-loc-btn');
-          if (changeLocBtn) changeLocBtn.onclick = () => openLocationPicker(firstPhoto);
-        } else {
-          popupEl.querySelectorAll('.cluster-popup-item').forEach((itemEl) => {
-            itemEl.onclick = () => {
-              const pId = itemEl.getAttribute('data-photo-id');
-              const selectedPhoto = cluster.photos.find(p => p.id === pId);
-              if (selectedPhoto) openLightbox(selectedPhoto);
-            };
-          });
-        }
-      });
-
-      marker.addTo(markersLayer);
-      cluster.photos.forEach(p => markerMap.set(p.id, marker));
-    });
-
-    fitMapToBounds();
-  }
-
-  // --- Location Assignment Helper ---
-  async function assignLocationToPhoto(photoId, loc) {
-    const photo = photos.find(p => String(p.id) === String(photoId));
-    if (!photo) return;
-    photo.gps = { lat: loc.lat, lng: loc.lng };
-    photo.location = loc.fullName || loc.name;
-    savePhotos(); // Luôn lưu vào Local Storage để duy trì toạ độ ghim
-
-    // If connected to Google Drive, patch file description
-    if (accessToken && !String(photo.id).startsWith('local-') && !String(photo.id).startsWith('demo-')) {
-      try {
-        fetch(`https://www.googleapis.com/drive/v3/files/${photo.id}`, {
-          method: 'PATCH',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            description: JSON.stringify({
-              location: photo.location,
-              gps: photo.gps,
-              camera: photo.camera,
-              settings: photo.settings,
-              width: photo.width,
-              height: photo.height
-            })
-          })
-        }).catch(err => console.warn('Patch drive metadata error', err));
-      } catch (e) {
-        console.warn('Drive patch error', e);
-      }
-    }
-
-    updateAllViews();
-    showToast(`📍 Đã ghim ảnh vào "${loc.name || loc.fullName}"!`);
-    if (travelMap) {
-      switchView('map');
-      flyToMapLocation(loc.lat, loc.lng, 13);
-      setTimeout(() => {
-        const marker = markerMap.get(photo.id);
-        if (marker) marker.openPopup();
-      }, 1250);
-    }
-  }
-
-  // --- Location Picker & Map Pinning Functions ---
-  function openLocationPicker(photo) {
-    if (!photo) {
-      // Pick first unlocated photo, or first photo available
-      const unlocated = photos.find(p => getPhotoLatLng(p) === null);
-      activePickerPhoto = unlocated || photos[0];
-    } else {
-      activePickerPhoto = photo;
-    }
-    if (!activePickerPhoto) {
-      showToast('Chưa có ảnh nào để ghim vị trí. Vui lòng tải ảnh lên trước!');
-      return;
-    }
-    if (locPickerPhotoTitle) {
-      locPickerPhotoTitle.textContent = `Ảnh: ${activePickerPhoto.title}`;
-    }
-    if (locSearchInput) {
-      locSearchInput.value = '';
-    }
-    if (locSearchResults) {
-      locSearchResults.hidden = true;
-      locSearchResults.innerHTML = '';
-    }
-    renderPopularLocations();
-    if (locationPickerModal) {
-      locationPickerModal.classList.add('open');
-    }
-  }
-
-  function closeLocationPicker() {
-    if (locationPickerModal) {
-      locationPickerModal.classList.remove('open');
-    }
-  }
-
-  function renderPopularLocations() {
-    if (!locPopularList) return;
-    locPopularList.innerHTML = '';
-    POPULAR_LOCATIONS.forEach((loc) => {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'loc-chip-btn';
-      chip.innerHTML = `📍 ${loc.name}`;
-      chip.title = loc.fullName;
-      chip.addEventListener('click', () => {
-        if (activePickerPhoto) {
-          assignLocationToPhoto(activePickerPhoto.id, loc);
-          closeLocationPicker();
-        }
-      });
-      locPopularList.appendChild(chip);
-    });
-  }
-
-  function onSearchInput(query) {
-    clearTimeout(searchDebounceTimer);
-    searchDebounceTimer = setTimeout(() => {
-      searchLocation(query);
-    }, 320);
-  }
-
-  async function searchLocation(query) {
-    if (!locSearchResults) return;
-    const q = (query || '').trim();
-    if (q.length < 2) {
-      locSearchResults.hidden = true;
-      locSearchResults.innerHTML = '';
-      return;
-    }
-
-    locSearchResults.hidden = false;
-    locSearchResults.innerHTML = `<div class="loc-result-item" style="color:var(--muted);">🔍 Đang tìm kiếm "${q}"...</div>`;
-
-    try {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&addressdetails=1`;
-      const res = await fetch(url, {
-        headers: { 'Accept-Language': 'vi,en;q=0.9' }
-      });
-      if (!res.ok) throw new Error('Không thể tìm kiếm');
-      const data = await res.json();
-
-      if (!data || data.length === 0) {
-        locSearchResults.innerHTML = `<div class="loc-result-item" style="color:var(--muted);">Không tìm thấy địa điểm nào khớp với "${q}"</div>`;
-        return;
-      }
-
-      locSearchResults.innerHTML = '';
-      data.forEach((item) => {
-        const itemEl = document.createElement('div');
-        itemEl.className = 'loc-result-item';
-        const parts = item.display_name.split(',');
-        const shortName = parts[0].trim();
-        itemEl.innerHTML = `
-          <span>📍</span>
-          <div>
-            <strong>${shortName}</strong>
-            <div style="font-size:11px;color:var(--muted);">${parts.slice(1, 4).join(', ')}</div>
-          </div>
-        `;
-        itemEl.addEventListener('click', () => {
-          if (activePickerPhoto) {
-            assignLocationToPhoto(activePickerPhoto.id, {
-              name: shortName,
-              fullName: item.display_name,
-              lat: parseFloat(item.lat),
-              lng: parseFloat(item.lon)
-            });
-            closeLocationPicker();
-          }
-        });
-        locSearchResults.appendChild(itemEl);
-      });
-    } catch (e) {
-      locSearchResults.innerHTML = `<div class="loc-result-item" style="color:var(--muted);">Lỗi tìm kiếm: ${e.message}</div>`;
-    }
-  }
-
-  function startMapPinning() {
-    if (!activePickerPhoto) return;
-    closeLocationPicker();
-    switchView('map');
-    isMapPinningMode = true;
-    if (mapPinningTitle) mapPinningTitle.textContent = `"${activePickerPhoto.title}"`;
-    if (mapPinningBar) mapPinningBar.hidden = false;
-    if (travelMapEl) travelMapEl.classList.add('map-crosshair');
-    showToast('📍 Click vào bất kỳ vị trí nào trên bản đồ để ghim ảnh!');
-  }
-
-  function cancelMapPinning() {
-    isMapPinningMode = false;
-    if (mapPinningBar) mapPinningBar.hidden = true;
-    if (travelMapEl) travelMapEl.classList.remove('map-crosshair');
-  }
-
-  function onMapClick(e) {
-    if (!isMapPinningMode || !activePickerPhoto) return;
-    const lat = e.latlng.lat;
-    const lng = e.latlng.lng;
-    const targetPhoto = activePickerPhoto;
-    cancelMapPinning();
-
-    showToast(`📍 Đang ghim ảnh tại ${lat.toFixed(4)}°, ${lng.toFixed(4)}°...`);
-
-    reverseGeocode(lat, lng).then((addr) => {
-      const locName = addr || `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`;
-      assignLocationToPhoto(targetPhoto.id, {
-        name: locName.split(',')[0].trim(),
-        fullName: locName,
-        lat: lat,
-        lng: lng
-      });
-    }).catch(() => {
-      assignLocationToPhoto(targetPhoto.id, {
-        name: `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`,
-        fullName: `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`,
-        lat: lat,
-        lng: lng
-      });
-    });
-  }
-
-  // --- Destinations Drawer (Grouped by place like user screenshot) ---
-  function renderDestinationsDrawer() {
-    if (!destinationsList) return;
-    destinationsList.innerHTML = '';
-
-    const destMap = new Map();
-    photos.forEach((p) => {
-      const coords = getPhotoLatLng(p);
-      const locKey = p.location ? p.location.split(',')[0].trim() : (coords ? `${coords.lat.toFixed(2)}, ${coords.lng.toFixed(2)}` : 'Chưa định vị');
-      if (!destMap.has(locKey)) {
-        destMap.set(locKey, {
-          name: locKey,
-          fullName: p.location || (coords ? `Toạ độ ${coords.lat.toFixed(4)}°, ${coords.lng.toFixed(4)}°` : 'Chưa ghim toạ độ'),
-          photos: [],
-          lat: coords ? coords.lat : null,
-          lng: coords ? coords.lng : null,
-          latestDate: p.date
-        });
-      }
-      const group = destMap.get(locKey);
-      group.photos.push(p);
-      if (!group.lat && coords) {
-        group.lat = coords.lat;
-        group.lng = coords.lng;
-      }
-    });
-
-    const destArray = Array.from(destMap.values());
-
-    if (citiesVisitedCount) {
-      citiesVisitedCount.textContent = destArray.length;
-    }
-
-    if (destArray.length === 0) {
-      destinationsList.innerHTML = `<div class="muted small" style="grid-column: 1/-1; padding: 14px 0;">Chưa có điểm đến nào. Hãy tải ảnh kỷ niệm vào để tạo điểm đến!</div>`;
-      return;
-    }
-
-    destArray.forEach((dest) => {
-      const coverPhoto = dest.photos[0];
-      const hasGps = !!(dest.lat && dest.lng);
-      const card = document.createElement('div');
-      card.className = hasGps ? 'destination-card' : 'destination-card no-gps';
-      card.innerHTML = `
-        <div class="destination-thumb">
-          <img src="${coverPhoto.url}" alt="${dest.name}" loading="lazy" />
-          <span class="places-badge">${dest.photos.length} kỷ niệm</span>
-          ${!hasGps ? '<span class="no-gps-badge" style="background:#ff4d4f;color:#fff;padding:2px 6px;border-radius:4px;font-size:10.5px;font-weight:600;">⚠️ Chưa ghim</span>' : ''}
-        </div>
-        <div class="destination-info">
-          <div class="destination-name" title="${dest.fullName}">
-            ${hasGps ? '📍' : '⚠️'} ${dest.fullName}
-          </div>
-          <div class="destination-sub">
-            ${hasGps ? formatDate(dest.latestDate) : '<span style="color:#ff7875;font-weight:600;">Bấm vào đây để ghim vị trí</span>'}
-          </div>
-        </div>
-      `;
-
-      card.addEventListener('click', () => {
-        if (dest.lat && dest.lng && travelMap) {
-          switchView('map');
-          flyToMapLocation(dest.lat, dest.lng, 13);
-          const marker = markerMap.get(coverPhoto.id);
-          if (marker) {
-            setTimeout(() => marker.openPopup(), 1200);
-          }
-        } else {
-          openLocationPicker(coverPhoto);
-        }
-      });
-
-      destinationsList.appendChild(card);
-    });
-  }
-
-  // --- Timeline View ---
-  function renderTimeline() {
-    if (!timelineContainer) return;
-    timelineContainer.innerHTML = '';
-
-    if (photos.length === 0) {
-      timelineContainer.innerHTML = '<div class="muted small">Chưa có ảnh kỷ niệm nào trong dòng thời gian.</div>';
-      return;
-    }
-
-    const sorted = [...photos].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-
-    const groups = new Map();
-    sorted.forEach((p) => {
-      let groupKey = 'Kho ảnh kỷ niệm';
-      if (p.date) {
-        const d = new Date(p.date);
-        groupKey = `Tháng ${d.getMonth() + 1}, ${d.getFullYear()}`;
-      }
-      if (!groups.has(groupKey)) {
-        groups.set(groupKey, []);
-      }
-      groups.get(groupKey).push(p);
-    });
-
-    groups.forEach((items, monthStr) => {
-      const groupEl = document.createElement('div');
-      groupEl.className = 'timeline-group';
-
-      let itemsHtml = '';
-      items.forEach((item) => {
-        itemsHtml += `
-          <div class="photo-card" style="margin-bottom:0;">
-            <div class="card-media" style="height:140px;cursor:pointer;" data-id="${item.id}">
-              <img src="${item.url}" alt="${item.title}" loading="lazy" />
-              ${item.location ? `<span class="location-badge">${item.location}</span>` : ''}
-            </div>
-            <div class="card-body" style="padding:10px 12px;">
-              <h4 class="card-title">${item.title}</h4>
-              <div class="card-meta">
-                <span>${formatDate(item.date)}</span>
-                <span>•</span>
-                <span>${item.camera || 'Camera'}</span>
-              </div>
-            </div>
-          </div>
-        `;
-      });
-
-      groupEl.innerHTML = `
-        <div class="timeline-dot"></div>
-        <div class="timeline-group-header">
-          <span>📅 ${monthStr}</span>
-          <span class="muted small">(${items.length} bức ảnh)</span>
-        </div>
-        <div class="timeline-items-grid">
-          ${itemsHtml}
-        </div>
-      `;
-
-      groupEl.querySelectorAll('.card-media').forEach((mediaEl) => {
-        mediaEl.addEventListener('click', () => {
-          const id = mediaEl.getAttribute('data-id');
-          const p = photos.find(x => x.id === id);
-          if (p) openLightbox(p);
-        });
-      });
-
-      timelineContainer.appendChild(groupEl);
-    });
-  }
-
-  // --- View Switcher ---
-  function switchView(viewName) {
-    currentView = viewName;
-    if (viewMapBtn) {
-      viewMapBtn.classList.toggle('active', viewName === 'map');
-      viewMapBtn.setAttribute('aria-selected', viewName === 'map');
-    }
-    if (viewGridBtn) {
-      viewGridBtn.classList.toggle('active', viewName === 'grid');
-      viewGridBtn.setAttribute('aria-selected', viewName === 'grid');
-    }
-    if (viewTimelineBtn) {
-      viewTimelineBtn.classList.toggle('active', viewName === 'timeline');
-      viewTimelineBtn.setAttribute('aria-selected', viewName === 'timeline');
-    }
-
-    if (mapSection) mapSection.hidden = (viewName !== 'map');
-    if (gallerySection) gallerySection.hidden = (viewName !== 'grid');
-    if (timelineSection) timelineSection.hidden = (viewName !== 'timeline');
-
-    if (viewName === 'map') {
-      if (!travelMap) {
-        initTravelMap();
-      }
-      setTimeout(() => {
-        if (travelMap) travelMap.invalidateSize();
-      }, 150);
-    } else if (viewName === 'timeline') {
-      renderTimeline();
-    } else if (viewName === 'grid') {
-      renderGallery();
-    }
-  }
-
-  function updateAllViews() {
-    renderGallery();
-    renderMapMarkers();
-    renderDestinationsDrawer();
-    if (currentMapScope === 'vietnam') {
-      renderVietnamVectorMap();
-    }
-    if (currentView === 'timeline') {
-      renderTimeline();
-    }
-  }
-
-  // --- Render Gallery Grid ---
-  function renderGallery() {
-    if (!galleryGrid) return;
-    galleryGrid.innerHTML = '';
-
-    // Filter & search
-    let list = photos.filter((item) => {
-      if (currentFilter !== 'all' && item.folder !== currentFilter) return false;
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const inTitle = item.title && item.title.toLowerCase().includes(q);
-        const inLoc = item.location && item.location.toLowerCase().includes(q);
-        const inCam = item.camera && item.camera.toLowerCase().includes(q);
-        return inTitle || inLoc || inCam;
-      }
-      return true;
-    });
-
-    // Sorting
-    list.sort((a, b) => {
-      if (sortBy === 'date-desc') return new Date(b.date || 0) - new Date(a.date || 0);
-      if (sortBy === 'date-asc') return new Date(a.date || 0) - new Date(b.date || 0);
-      if (sortBy === 'name-asc') return (a.title || '').localeCompare(b.title || '');
-      if (sortBy === 'size-desc') return (b.size || 0) - (a.size || 0);
-      return 0;
-    });
-
-    // Update stats
-    const totalBytes = list.reduce((sum, i) => sum + (i.size || 0), 0);
-    if (statsLabel) {
-      statsLabel.textContent = `${list.length} ảnh • ${formatBytes(totalBytes)}`;
-    }
-
-    if (list.length === 0) {
-      const emptyMsg = accessToken
-        ? `<p><b>Thư mục DriveGallery trên Google Drive của bạn chưa có ảnh nào</b></p>
-           <p class="muted small">Hãy kéo thả hoặc bấm vào ô bên trên để tải bức ảnh đầu tiên lên Google Drive của bạn!</p>
-           ${driveFolderId ? `<p style="margin-top:12px;"><a href="https://drive.google.com/drive/folders/${driveFolderId}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">📁 Mở thư mục DriveGallery trên Google Drive ↗</a></p>` : ''}`
-        : `<p><b>Không tìm thấy ảnh nào</b></p>
-           <p class="muted small">Hãy thử tìm từ khóa khác hoặc kéo thả ảnh mới vào để tải lên.</p>`;
-      galleryGrid.innerHTML = `
-        <div class="empty-state">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="muted" style="margin-bottom:8px;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          ${emptyMsg}
-        </div>
-      `;
-      return;
-    }
-
-    list.forEach((item) => {
-      const card = document.createElement('article');
-      card.className = 'photo-card';
-
-      const coords = getPhotoLatLng(item);
-      const hasGps = coords !== null;
-
-      const locationBadgeHtml = hasGps
-        ? `<span class="location-badge" title="${item.location || 'Toạ độ GPS'}">
-             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-             ${item.location || `${coords.lat.toFixed(2)}°, ${coords.lng.toFixed(2)}°`}
-           </span>`
-        : `<span class="no-gps-pill" title="Ảnh chưa có toạ độ. Bấm để ghim lên bản đồ!">
-             ⚠️ Chưa ghim vị trí
-           </span>`;
-
-      const dateBadgeHtml = item.date
-        ? `<span class="date-badge">${new Date(item.date).toLocaleDateString('vi-VN')}</span>`
-        : '';
-
-      const isDrive = !!item.driveLink;
-      const storageBadge = isDrive
-        ? `<span style="color:var(--good);font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:3px;" title="Ảnh đã lưu trên Google Drive">☁️ Google Drive</span>`
-        : `<span style="color:var(--warn);font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:3px;" title="Ảnh chỉ lưu tạm trên máy bạn (Chưa lên Drive)">💻 Lưu tạm (Demo)</span>`;
-
-      card.innerHTML = `
-        <div class="card-media">
-          <img src="${item.url}" alt="${item.title}" loading="lazy" />
-          ${locationBadgeHtml}
-          ${dateBadgeHtml}
-        </div>
-        <div class="card-body">
-          <h4 class="card-title" title="${item.title}">${item.title}</h4>
-          <div class="card-meta">
-            <span>${storageBadge}</span>
-            <span>•</span>
-            <span>${formatBytes(item.size)}</span>
-            <span>•</span>
-            <span>${item.camera || 'Camera'}</span>
-          </div>
-          <div class="card-actions">
-            <button class="btn btn-outline btn-sm pin-btn" type="button" title="Ghim / Đổi toạ độ">
-              📍 ${hasGps ? 'Đổi vị trí' : 'Ghim vị trí'}
-            </button>
-            <button class="btn btn-outline btn-sm copy-btn" data-url="${item.directUrl || item.url}" type="button" title="Sao chép link trực tiếp">Link</button>
-            <button class="btn btn-outline btn-sm detail-btn" type="button">Chi tiết</button>
-          </div>
-        </div>
-      `;
-
-      // Event listeners on card
-      const media = card.querySelector('.card-media');
-      const detailBtn = card.querySelector('.detail-btn');
-      const copyBtn = card.querySelector('.copy-btn');
-      const pinBtn = card.querySelector('.pin-btn');
-      const noGpsPill = card.querySelector('.no-gps-pill');
-      const locBadge = card.querySelector('.location-badge');
-
-      const openDetails = () => openLightbox(item);
-      media.addEventListener('click', openDetails);
-      detailBtn.addEventListener('click', openDetails);
-
-      if (pinBtn) {
-        pinBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          openLocationPicker(item);
-        });
-      }
-
-      if (noGpsPill) {
-        noGpsPill.addEventListener('click', (e) => {
-          e.stopPropagation();
-          openLocationPicker(item);
-        });
-      }
-
-      if (locBadge && hasGps) {
-        locBadge.addEventListener('click', (e) => {
-          e.stopPropagation();
-          switchView('map');
-          flyToMapLocation(coords.lat, coords.lng, 13);
-          const marker = markerMap.get(item.id);
-          if (marker) setTimeout(() => marker.openPopup(), 1200);
-        });
-      }
-
-      copyBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const url = copyBtn.getAttribute('data-url');
-        navigator.clipboard.writeText(url).then(() => {
-          showToast('Đã sao chép direct link ảnh!');
-        });
-      });
-
-      galleryGrid.appendChild(card);
-    });
-  }
-
-  // --- Lightbox Inspector Modal ---
-  function openLightbox(item) {
-    activePhoto = item;
-    lightboxImg.src = item.url;
-    lightboxTitle.textContent = item.title;
-    lightboxFolder.innerHTML = item.driveLink
-      ? `<span style="color:var(--good);font-weight:600;">☁️ Vị trí: Đã lưu trên Google Drive (Thư mục DriveGallery)</span>`
-      : `<span style="color:var(--warn);font-weight:600;">💻 Vị trí: Đang lưu tạm trên máy (Chưa lên Drive)</span>`;
-
-    // Location
-    const coords = getPhotoLatLng(item);
-    const hasGps = coords !== null;
-
-    lightboxLocation.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;width:100%;">
-        <div style="display:flex;align-items:center;gap:6px;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-          <strong>${hasGps ? (item.location || `${coords.lat.toFixed(4)}°, ${coords.lng.toFixed(4)}°`) : '<span style="color:#ff7875;">Chưa có toạ độ GPS trên bản đồ</span>'}</strong>
-        </div>
-        <button id="lightboxChangeLocBtn" class="btn btn-outline btn-sm" type="button" style="font-size:11.5px;padding:3px 10px;">
-          📍 ${hasGps ? 'Đổi vị trí ghim' : 'Ghim vị trí ngay'}
-        </button>
-      </div>
-    `;
-
-    const changeLocBtn = document.getElementById('lightboxChangeLocBtn');
-    if (changeLocBtn) {
-      changeLocBtn.onclick = () => {
-        closeLightbox();
-        openLocationPicker(item);
-      };
-    }
-
-    if (hasGps) {
-      lightboxMapLink.href = `https://www.google.com/maps?q=${coords.lat},${coords.lng}`;
-      lightboxMapLinkWrapper.hidden = false;
-    } else {
-      lightboxMapLinkWrapper.hidden = true;
-    }
-
-    // Camera & settings
-    lightboxCamera.textContent = item.camera || 'Không rõ thông số camera';
-    lightboxSettings.textContent = item.settings || 'f/2.8 • 1/125s • ISO 100';
-
-    // File info
-    lightboxDate.textContent = formatDate(item.date);
-    const dimensions = item.width && item.height ? ` • ${item.width} × ${item.height} px` : '';
-    lightboxSize.textContent = `${formatBytes(item.size)}${dimensions}`;
-
-    // Embed links
-    const directUrl = item.directUrl || item.url;
-    directLinkInput.value = directUrl;
-    markdownLinkInput.value = `![${item.title}](${directUrl})`;
-    htmlLinkInput.value = `<img src="${directUrl}" alt="${item.title}" loading="lazy" />`;
-
-    // Google Drive link
-    if (item.driveLink) {
-      lightboxDriveLink.href = item.driveLink;
-      lightboxDriveLink.hidden = false;
-    } else {
-      lightboxDriveLink.hidden = true;
-    }
-
-    lightboxModal.classList.add('open');
-  }
-
-  function closeLightbox() {
-    lightboxModal.classList.remove('open');
-    activePhoto = null;
-  }
-
-  // --- Upload & File Processing with EXIF / GPS Extraction ---
-  async function processFile(file) {
-    const queueItem = document.createElement('div');
-    queueItem.className = 'upload-item';
-    queueItem.innerHTML = `
-      <div class="upload-thumb" style="display:flex;align-items:center;justify-content:center;background:var(--soft);">⏳</div>
-      <div class="upload-info">
-        <div class="upload-title">${file.name}</div>
-        <div class="upload-status">Đang đọc EXIF &amp; vị trí GPS...</div>
-        <div class="progress-bar"><div class="progress-fill" style="width: 25%"></div></div>
-      </div>
-    `;
-    uploadQueue.appendChild(queueItem);
-    uploadQueue.hidden = false;
-
-    const statusEl = queueItem.querySelector('.upload-status');
-    const fillEl = queueItem.querySelector('.progress-fill');
-    const thumbEl = queueItem.querySelector('.upload-thumb');
-
-    try {
-      // 1. Create local preview
-      const previewUrl = URL.createObjectURL(file);
-      thumbEl.innerHTML = `<img src="${previewUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:4px;" />`;
-
-      // 2. Parse EXIF & GPS
-      let exifData = null;
-      let gps = null;
-      let locationName = null;
-
-      if (window.exifr) {
-        try {
-          exifData = await window.exifr.parse(file, {
-            tiff: true,
-            exif: true,
-            gps: true,
-            reviveValues: true
-          });
-
-          if (exifData && exifData.latitude && exifData.longitude) {
-            gps = { lat: exifData.latitude, lng: exifData.longitude };
-            statusEl.textContent = '📍 Đang tìm địa danh từ GPS...';
-            fillEl.style.width = '50%';
-            locationName = await reverseGeocode(gps.lat, gps.lng);
-          }
-        } catch (exifErr) {
-          console.warn('EXIF read error on', file.name, exifErr);
-        }
-      }
-
-      // 3. Read image dimensions
-      const dimensions = await getImageDimensions(previewUrl);
-
-      // 4. Determine destination (Google Drive or Demo Storage)
-      fillEl.style.width = '75%';
-      let uploadedItem = null;
-
-      if (accessToken) {
-        statusEl.textContent = '☁️ Đang tải lên Google Drive...';
-        uploadedItem = await uploadToGoogleDrive(file, {
-          title: file.name.replace(/\.[^/.]+$/, ''),
-          folder: folderSelect.value === 'all' ? 'travel' : folderSelect.value,
-          location: locationName,
-          gps: gps,
-          camera: formatCameraName(exifData),
-          settings: formatExifSettings(exifData),
-          date: exifData?.DateTimeOriginal ? new Date(exifData.DateTimeOriginal).toISOString() : new Date().toISOString(),
-          width: dimensions.width,
-          height: dimensions.height,
-          size: file.size
-        });
-      } else {
-        // Demo mode: compress thumbnail for memory / localStorage
-        statusEl.textContent = 'Hoàn tất trích xuất thông tin!';
-        fillEl.style.width = '100%';
-        const dataUrl = await fileToCompressedDataUrl(file);
-
-        uploadedItem = {
-          id: 'local-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-          title: file.name.replace(/\.[^/.]+$/, ''),
-          url: dataUrl || previewUrl,
-          directUrl: previewUrl,
-          folder: folderSelect.value === 'all' ? 'travel' : folderSelect.value,
-          size: file.size,
-          width: dimensions.width,
-          height: dimensions.height,
-          date: exifData?.DateTimeOriginal ? new Date(exifData.DateTimeOriginal).toISOString() : new Date().toISOString(),
-          camera: formatCameraName(exifData),
-          settings: formatExifSettings(exifData),
-          location: locationName || 'Chưa có GPS trong ảnh',
-          gps: gps
-        };
-      }
-
-      photos.unshift(uploadedItem);
-      if (!accessToken) savePhotos();
-      updateAllViews();
-
-      const uploadedCoords = getPhotoLatLng(uploadedItem);
-      if (uploadedCoords && travelMap) {
-        if (currentView === 'map') {
-          flyToMapLocation(uploadedCoords.lat, uploadedCoords.lng, 13);
-        }
-      } else if (!uploadedCoords) {
-        showToast(`💡 Ảnh "${uploadedItem.title}" chưa có GPS. Hãy chọn vị trí ghim!`);
-        openLocationPicker(uploadedItem);
-      }
-
-      // Complete queue item
-      statusEl.textContent = '✓ Hoàn thành';
-      statusEl.style.color = 'var(--good)';
-      fillEl.style.width = '100%';
-      fillEl.style.background = 'var(--good)';
-
-      if (accessToken) {
-        showToast(`☁️ Đã lưu lên Google Drive (thư mục DriveGallery): ${uploadedItem.title}`);
-      } else {
-        showToast(`💻 Ảnh đã lưu tạm trên máy (Hãy bấm "Kết nối Google Drive" để lưu lên Drive)`);
-      }
-
-      setTimeout(() => {
-        queueItem.remove();
-        if (uploadQueue.children.length === 0) uploadQueue.hidden = true;
-      }, 2500);
-    } catch (err) {
-      console.error('File process failed', err);
-      statusEl.textContent = `❌ ${err.message || 'Lỗi xử lý ảnh'}`;
-      statusEl.style.color = 'var(--danger)';
-      fillEl.style.background = 'var(--danger)';
-      showToast(`❌ Không thể tải ảnh: ${err.message || 'Lỗi không xác định'}`);
-    }
-  }
-
-  function getImageDimensions(url) {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-      img.onerror = () => resolve({ width: 0, height: 0 });
-      img.src = url;
-    });
-  }
-
-  function fileToCompressedDataUrl(file) {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const maxDim = 1200;
-          let w = img.width;
-          let h = img.height;
-          if (w > maxDim || h > maxDim) {
-            if (w > h) {
-              h = Math.round((h * maxDim) / w);
-              w = maxDim;
-            } else {
-              w = Math.round((w * maxDim) / h);
-              h = maxDim;
-            }
-          }
-          const canvas = document.createElement('canvas');
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', 0.82));
-        };
-        img.onerror = () => resolve(e.target.result);
-        img.src = e.target.result;
-      };
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(file);
-    });
-  }
-
-  let ensureFolderPromise = null;
-
-  // --- Google Drive REST API v3 Integration ---
-  async function uploadToGoogleDrive(file, meta) {
-    let mimeType = file.type;
-    if (!mimeType) {
-      const ext = (file.name.split('.').pop() || '').toLowerCase();
-      if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-      else if (ext === 'png') mimeType = 'image/png';
-      else if (ext === 'webp') mimeType = 'image/webp';
-      else if (ext === 'gif') mimeType = 'image/gif';
-      else if (ext === 'heic') mimeType = 'image/heic';
-      else if (ext === 'heif') mimeType = 'image/heif';
-      else mimeType = 'image/jpeg';
-    }
-
-    const boundary = '-------DriveGallery' + Date.now();
-    const delimiter = `\r\n--${boundary}\r\n`;
-    const closeDelimiter = `\r\n--${boundary}--`;
-
-    const metadata = {
-      name: file.name,
-      mimeType: mimeType,
-      description: JSON.stringify({
-        location: meta.location,
-        gps: meta.gps,
-        camera: meta.camera,
-        settings: meta.settings,
-        width: meta.width,
-        height: meta.height
-      })
-    };
-
-    await ensureDriveFolder();
-    if (driveFolderId) {
-      metadata.parents = [driveFolderId];
-    }
-
-    const fileBytes = await file.arrayBuffer();
-
-    const multipartRequestBody = new Blob([
-      delimiter,
-      'Content-Type: application/json; charset=UTF-8\r\n\r\n',
-      JSON.stringify(metadata),
-      delimiter,
-      `Content-Type: ${mimeType}\r\n\r\n`,
-      fileBytes,
-      closeDelimiter
-    ], { type: `multipart/related; boundary=${boundary}` });
-
-    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink,thumbnailLink', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': `multipart/related; boundary=${boundary}`
-      },
-      body: multipartRequestBody
-    });
-
-    if (!res.ok) {
-      if (res.status === 401) {
-        sessionStorage.removeItem('drive_access_token');
-        sessionStorage.removeItem('drive_token_expires');
-        accessToken = null;
-        setConnectedState(false);
-        throw new Error('Phiên đăng nhập Google Drive đã hết hạn. Vui lòng bấm Kết nối lại.');
-      }
-      const errJson = await res.json().catch(() => null);
-      const errMsg = errJson?.error?.message || `Lỗi Drive HTTP ${res.status}`;
-      throw new Error(errMsg);
-    }
-    const driveFile = await res.json();
-
-    // Make file readable by anyone with link (for direct embed)
-    try {
-      await fetch(`https://www.googleapis.com/drive/v3/files/${driveFile.id}/permissions`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          role: 'reader',
-          type: 'anyone'
-        })
-      });
-    } catch (e) {
-      console.warn('Set permission warning', e);
-    }
-
-    const directUrl = `https://lh3.googleusercontent.com/d/${driveFile.id}`;
-
+  function styleFor(feature) {
+    const visited = byProvince().has(feature.properties.name);
+    const active = feature.properties.name === selected;
     return {
-      id: driveFile.id,
-      title: meta.title,
-      url: directUrl,
-      directUrl: directUrl,
-      driveLink: driveFile.webViewLink,
-      folder: meta.folder,
-      size: meta.size,
-      width: meta.width,
-      height: meta.height,
-      date: meta.date,
-      camera: meta.camera,
-      settings: meta.settings,
-      location: meta.location,
-      gps: meta.gps
+      color: active ? cssVar("--fg") : cssVar("--bg"),
+      weight: active ? 2 : 1,
+      fillColor: visited ? colorOf(feature.properties.name) : cssVar("--land"),
+      fillOpacity: visited ? 0.85 : 1,
     };
   }
 
-  // --- Ensure "DriveGallery" folder exists on Google Drive ---
-  async function ensureDriveFolder() {
-    if (driveFolderId) return driveFolderId;
-    if (!accessToken) return null;
-    if (ensureFolderPromise) return ensureFolderPromise;
+  function initMap() {
+    map = L.map("map", { zoomControl: true, attributionControl: false, zoomSnap: 0.25, minZoom: 4.5, maxZoom: 10 });
+    layer = L.geoJSON(geo, {
+      style: styleFor,
+      onEachFeature: (f, lyr) => {
+        lyr.on("click", () => selectProvince(f.properties.name));
+        lyr.on("mouseover", () => lyr.setStyle({ weight: 2, color: cssVar("--fg") }));
+        lyr.on("mouseout", () => layer.resetStyle(lyr));
+        lyr.bindTooltip(() => {
+          const n = byProvince().get(f.properties.name)?.length || 0;
+          return `${f.properties.name}${n ? ` · ${n} ảnh` : ""}`;
+        }, { sticky: true, className: "tip", direction: "top" });
+      },
+    }).addTo(map);
 
-    ensureFolderPromise = (async () => {
-      try {
-        const config = loadSavedConfig();
-        const folderName = config.folderName || 'DriveGallery';
-        const q = `mimeType = 'application/vnd.google-apps.folder' and name = '${folderName}' and trashed = false`;
-        const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id, name)`, {
-          headers: { Authorization: `Bearer ${accessToken}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.files && data.files.length > 0) {
-            driveFolderId = data.files[0].id;
-            updateDriveFolderUI(driveFolderId);
-            return driveFolderId;
-          }
-        }
+    for (const f of geo.features) {
+      const [lng, lat] = f.properties.label;
+      labels[f.properties.name] = L.marker([lat, lng], {
+        interactive: false,
+        icon: L.divIcon({ className: "province-label", html: `<span>${f.properties.name}</span>`, iconSize: [0, 0] }),
+      }).addTo(map);
+    }
+    for (const is of ISLANDS) {
+      L.marker([is.lat, is.lng], {
+        interactive: false,
+        icon: L.divIcon({ className: "island-label", html: `<span><b></b>${is.name}<br>${is.sub}</span>`, iconSize: [0, 0] }),
+      }).addTo(map);
+    }
 
-        // If not exists, create folder
-        const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            name: folderName,
-            mimeType: 'application/vnd.google-apps.folder'
-          })
-        });
-        if (createRes.ok) {
-          const newFolder = await createRes.json();
-          driveFolderId = newFolder.id;
-          updateDriveFolderUI(driveFolderId);
-          return driveFolderId;
-        }
-      } catch (e) {
-        console.warn('Error ensureDriveFolder', e);
-      } finally {
-        ensureFolderPromise = null;
-      }
-      return null;
-    })();
-
-    return ensureFolderPromise;
+    const fit = () => map.fitBounds(L.latLngBounds([8.2, 102.1], [23.4, 115.5]), { padding: [10, 10] });
+    fit();
+    map.setMaxBounds(L.latLngBounds([4, 96], [27, 121]));
+    map.on("zoomend", updateLabels);
+    window.addEventListener("resize", () => map.invalidateSize());
+    updateLabels();
   }
 
-  function updateDriveFolderUI(fId) {
-    if (openDriveFolderBtn && fId) {
-      openDriveFolderBtn.href = `https://drive.google.com/drive/folders/${fId}`;
-      openDriveFolderBtn.innerHTML = '📁 Thư mục DriveGallery ↗';
-      openDriveFolderBtn.hidden = false;
-      openDriveFolderBtn.style.display = 'inline-flex';
+  // Names of all provinces once zoomed in; only visited ones on the overview
+  function updateLabels() {
+    const z = map.getZoom();
+    const visited = byProvince();
+    for (const [name, m] of Object.entries(labels)) {
+      const v = visited.has(name);
+      const node = m.getElement();
+      if (!node) continue;
+      node.classList.toggle("visited", v);
+      node.style.display = z >= 6.25 || (v && z >= 5) ? "" : "none";
     }
   }
 
-  // --- Sync photos from Drive folder ---
-  async function syncDrivePhotos() {
-    if (!accessToken) return;
-    await ensureDriveFolder();
-    if (!driveFolderId) return;
-
-    try {
-      const q = `'${driveFolderId}' in parents and trashed = false and mimeType contains 'image/'`;
-      const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id, name, mimeType, webViewLink, webContentLink, thumbnailLink, size, createdTime, description)&orderBy=createdTime desc`, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.files && data.files.length > 0) {
-        const drivePhotos = data.files.map((file) => {
-          let descData = {};
-          try {
-            if (file.description) descData = JSON.parse(file.description);
-          } catch (e) {}
-          const directUrl = `https://lh3.googleusercontent.com/d/${file.id}`;
-          return {
-            id: file.id,
-            title: file.name.replace(/\.[^/.]+$/, ''),
-            url: directUrl,
-            directUrl: directUrl,
-            driveLink: file.webViewLink,
-            folder: 'travel',
-            size: parseInt(file.size || '0', 10),
-            date: file.createdTime,
-            camera: descData.camera || 'Google Drive',
-            settings: descData.settings || 'Đã đồng bộ từ Drive',
-            location: descData.location || null,
-            gps: descData.gps || null
-          };
-        });
-
-        // Show only real Google Drive photos when connected
-        photos = drivePhotos;
-        updateAllViews();
-        // Merge Drive photos with local photos (prioritize Drive photos)
-        const driveIds = new Set(drivePhotos.map(d => d.id));
-        const localOnly = photos.filter(p => !driveIds.has(p.id) && !p.id.startsWith('demo-'));
-        photos = [...drivePhotos, ...localOnly];
-        savePhotos();
-        updateAllViews();
-      }
-    } catch (err) {
-      console.warn('Sync drive photos failed', err);
-    }
+  function refreshMap() {
+    if (!layer) return;
+    layer.setStyle(styleFor);
+    updateLabels();
   }
 
-  // --- Token Persistence & Storage ---
-  function saveAuthToken(token, expiresInMs) {
-    accessToken = token;
-    const expiresAt = Date.now() + expiresInMs;
-    localStorage.setItem('drive_access_token', token);
-    localStorage.setItem('drive_token_expires', expiresAt.toString());
-    sessionStorage.setItem('drive_access_token', token);
-    sessionStorage.setItem('drive_token_expires', expiresAt.toString());
+  function selectProvince(name) {
+    selected = name;
+    refreshMap();
+    renderSide();
+    const f = geo.features.find((x) => x.properties.name === name);
+    if (f) map.flyToBounds(L.geoJSON(f).getBounds(), { padding: [30, 30], maxZoom: 8, duration: 0.6 });
   }
 
-  function clearAuthToken() {
-    accessToken = null;
-    localStorage.removeItem('drive_access_token');
-    localStorage.removeItem('drive_token_expires');
-    sessionStorage.removeItem('drive_access_token');
-    sessionStorage.removeItem('drive_token_expires');
+  // ---------- side panel ----------
+  function thumbButton(p, list) {
+    const b = el("button", { type: "button", className: "thumb", title: p.title || p.province || "" },
+      el("img", { src: imgUrl(p, "thumb"), alt: p.title || "", loading: "lazy" }));
+    b.onclick = () => openViewer(list, list.indexOf(p));
+    return b;
   }
 
-  function restoreAuthToken() {
-    const token = localStorage.getItem('drive_access_token') || sessionStorage.getItem('drive_access_token');
-    const expiresAt = parseInt(localStorage.getItem('drive_token_expires') || sessionStorage.getItem('drive_token_expires') || '0', 10);
-    if (token && expiresAt > Date.now()) {
-      accessToken = token;
-      return true;
-    }
-    return false;
-  }
-
-  // --- Google OAuth Connection ---
-  function initGoogleAuth() {
-    const config = loadSavedConfig();
-    if (config.clientId && window.google?.accounts?.oauth2) {
-      try {
-        tokenClient = google.accounts.oauth2.initTokenClient({
-          client_id: config.clientId,
-          scope: 'https://www.googleapis.com/auth/drive.file',
-          callback: async (tokenResponse) => {
-            if (tokenResponse.error !== undefined) {
-              console.error('OAuth token error', tokenResponse);
-              showToast('Lỗi xác thực Google Drive');
-              setConnectedState('reauth');
-              return;
-            }
-            const expiresIn = (tokenResponse.expires_in || 3500) * 1000;
-            saveAuthToken(tokenResponse.access_token, expiresIn);
-            config.hasConnected = true;
-            saveConfig(config);
-
-            setConnectedState('connected');
-            showToast('✅ Đã kết nối Google Drive! Đang đồng bộ ảnh...');
-
-            const fId = await ensureDriveFolder();
-            if (fId) updateDriveFolderUI(fId);
-            await syncDrivePhotos();
-          }
-        });
-
-        checkAndApplyAuthState();
-      } catch (e) {
-        console.warn('Error initTokenClient', e);
-      }
-    }
-  }
-
-  function checkAndApplyAuthState() {
-    const config = loadSavedConfig();
-    const hasToken = restoreAuthToken();
-
-    if (hasToken) {
-      setConnectedState('connected');
-      ensureDriveFolder().then(() => syncDrivePhotos());
-    } else if (config.hasConnected && config.clientId) {
-      setConnectedState('reauth');
-      if (tokenClient) {
-        try {
-          tokenClient.requestAccessToken({ prompt: '' });
-        } catch (e) {
-          console.warn('Silent refresh error', e);
-        }
-      }
-    } else {
-      setConnectedState('local');
-    }
-  }
-
-  function setConnectedState(state) {
-    // state: 'connected' | 'reauth' | 'local'
-    if (state === 'connected') {
-      connectionBadge.className = 'status-pill connected';
-      connectionText.textContent = 'Google Drive: Đã kết nối';
-      if (quickConnectDriveBtn) {
-        quickConnectDriveBtn.hidden = true;
-        quickConnectDriveBtn.style.display = 'none';
-      }
-      if (driveFolderId) updateDriveFolderUI(driveFolderId);
-      if (disconnectBtn) disconnectBtn.hidden = false;
-    } else if (state === 'reauth') {
-      connectionBadge.className = 'status-pill reauth';
-      connectionText.textContent = 'Drive: Cần làm mới phiên';
-      if (quickConnectDriveBtn) {
-        quickConnectDriveBtn.innerHTML = '🔄 Kết nối lại Drive';
-        quickConnectDriveBtn.hidden = false;
-        quickConnectDriveBtn.style.display = 'inline-flex';
-      }
-      if (openDriveFolderBtn) {
-        openDriveFolderBtn.hidden = true;
-        openDriveFolderBtn.style.display = 'none';
-      }
-      if (disconnectBtn) disconnectBtn.hidden = false;
-    } else {
-      connectionBadge.className = 'status-pill local';
-      connectionText.textContent = 'Bộ nhớ thiết bị (Đã lưu)';
-      if (quickConnectDriveBtn) {
-        quickConnectDriveBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg> Đồng bộ Google Drive';
-        quickConnectDriveBtn.hidden = false;
-        quickConnectDriveBtn.style.display = 'inline-flex';
-      }
-      if (openDriveFolderBtn) {
-        openDriveFolderBtn.hidden = true;
-        openDriveFolderBtn.style.display = 'none';
-      }
-      if (disconnectBtn) disconnectBtn.hidden = true;
-    }
-  }
-
-  function connectGoogleDrive() {
-    const config = loadSavedConfig();
-    if (!config.clientId) {
-      configModal.classList.add('open');
-      clientIdInput.focus();
+  function renderSide() {
+    const groups = byProvince();
+    $("sideBack").hidden = !selected;
+    if (selected) {
+      const list = (groups.get(selected) || []).sort((a, b) => photoDate(b).localeCompare(photoDate(a)));
+      $("sideTitle").textContent = `${selected} · ${list.length} ảnh`;
+      $("sideBody").replaceChildren(list.length
+        ? el("div", { className: "grid" }, ...list.map((p) => thumbButton(p, list)))
+        : el("p", { className: "empty", textContent: "Chưa có ảnh ở nơi này." }));
       return;
     }
-    if (!tokenClient) {
-      initGoogleAuth();
+    $("sideTitle").textContent = "Nơi đã đến";
+    const rows = [...groups.entries()].filter(([n]) => n !== ABROAD).sort((a, b) => b[1].length - a[1].length);
+    const abroad = groups.get(ABROAD);
+    if (abroad) rows.push([ABROAD, abroad]);
+    if (!rows.length) {
+      $("sideBody").replaceChildren(el("p", { className: "empty", textContent: "Chưa có ảnh nào." }));
+      return;
     }
-    if (tokenClient) {
-      tokenClient.requestAccessToken({ prompt: 'consent' });
-    } else {
-      showToast('Đang tải thư viện Google, vui lòng thử lại sau 1-2 giây...');
-      configModal.classList.add('open');
+    $("sideBody").replaceChildren(...rows.map(([name, list]) => {
+      const b = el("button", { type: "button", className: "prov" },
+        el("i", { style: `background:${name === ABROAD ? cssVar("--muted") : colorOf(name)}` }),
+        el("span", { textContent: name }),
+        el("small", { textContent: `${list.length} ảnh` }));
+      b.onclick = () => (name === ABROAD ? showList(ABROAD, list) : selectProvince(name));
+      return b;
+    }));
+  }
+
+  function showList(title, list) {
+    selected = title;
+    $("sideBack").hidden = false;
+    $("sideTitle").textContent = `${title} · ${list.length} ảnh`;
+    $("sideBody").replaceChildren(el("div", { className: "grid" }, ...list.map((p) => thumbButton(p, list))));
+  }
+
+  // ---------- stats & timeline ----------
+  function renderStats() {
+    const visited = [...byProvince().keys()].filter((n) => n !== ABROAD).length;
+    $("visitedText").textContent = `Đã đến ${visited}/34 tỉnh, thành phố · ${photos.length} ảnh`;
+    $("visitedBar").style.width = `${(visited / 34) * 100}%`;
+    $("photoCount").textContent = photos.length ? `${photos.length} ảnh` : "";
+  }
+
+  function renderTimeline() {
+    if (!photos.length) {
+      $("timeline").replaceChildren(el("p", { className: "empty", textContent: "Chưa có ảnh nào." }));
+      return;
+    }
+    const sorted = [...photos].sort((a, b) => photoDate(b).localeCompare(photoDate(a)));
+    const months = new Map();
+    for (const p of sorted) {
+      const d = new Date(photoDate(p));
+      const key = isNaN(d) ? "Không rõ thời gian" : `Tháng ${d.getMonth() + 1}/${d.getFullYear()}`;
+      months.set(key, [...(months.get(key) || []), p]);
+    }
+    $("timeline").replaceChildren(...[...months.entries()].map(([label, list]) => {
+      const places = [...new Set(list.map((p) => p.province).filter(Boolean))].join(", ");
+      return el("div", { className: "tl-month" },
+        el("h3", {}, label, places ? el("small", { textContent: ` · ${places}` }) : null),
+        el("div", { className: "grid" }, ...list.map((p) => thumbButton(p, list))));
+    }));
+  }
+
+  function renderAll() {
+    renderStats();
+    renderSide();
+    renderTimeline();
+    refreshMap();
+  }
+
+  // ---------- viewer ----------
+  let viewList = [], viewIndex = 0;
+  function openViewer(list, index) {
+    viewList = list;
+    viewIndex = index;
+    showViewer();
+    $("viewer").showModal();
+  }
+  function showViewer() {
+    const p = viewList[viewIndex];
+    if (!p) return;
+    $("viewerImg").src = imgUrl(p);
+    $("viewerImg").alt = p.title || "";
+    const meta = [p.province, fmtDate(photoDate(p)), p.camera].filter(Boolean).join(" · ");
+    $("viewerText").replaceChildren(
+      p.title ? el("p", {}, el("strong", { textContent: p.title })) : null,
+      el("p", { className: "muted small", textContent: meta }),
+      p.note ? el("p", { textContent: p.note }) : null,
+    );
+    $("viewerPrev").hidden = viewIndex <= 0;
+    $("viewerNext").hidden = viewIndex >= viewList.length - 1;
+    const f = $("editForm");
+    f.hidden = !adminKey;
+    if (adminKey) {
+      f.title.value = p.title || "";
+      f.province.value = p.province || "";
+      f.takenAt.value = (photoDate(p) || "").slice(0, 10);
+      f.note.value = p.note || "";
+    }
+  }
+  const step = (d) => { if (viewList[viewIndex + d]) { viewIndex += d; showViewer(); } };
+  $("viewerPrev").onclick = () => step(-1);
+  $("viewerNext").onclick = () => step(1);
+  $("viewerClose").onclick = () => $("viewer").close();
+  $("viewer").addEventListener("click", (e) => { if (e.target.classList.contains("viewer-box")) $("viewer").close(); });
+  document.addEventListener("keydown", (e) => {
+    if (!$("viewer").open || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) return;
+    if (e.key === "ArrowLeft") step(-1);
+    if (e.key === "ArrowRight") step(1);
+  });
+
+  $("editForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const p = viewList[viewIndex];
+    const f = e.target;
+    try {
+      const updated = await api(`/api/photos/${p.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: f.title.value, province: f.province.value, takenAt: f.takenAt.value, note: f.note.value }),
+      });
+      Object.assign(p, updated);
+      Object.assign(photos.find((x) => x.id === p.id) || {}, updated);
+      renderAll();
+      showViewer();
+      toast("✓ Đã lưu");
+    } catch (err) { toast(err.message); }
+  };
+  $("deleteBtn").onclick = async () => {
+    const p = viewList[viewIndex];
+    if (!confirm("Xóa ảnh này khỏi bản đồ và Google Drive?")) return;
+    try {
+      await api(`/api/photos/${p.id}`, { method: "DELETE" });
+      photos = photos.filter((x) => x.id !== p.id);
+      $("viewer").close();
+      renderAll();
+      toast("✓ Đã xóa");
+    } catch (err) { toast(err.message); }
+  };
+
+  // ---------- admin ----------
+  function provinceOptions(select, value) {
+    select.replaceChildren(el("option", { value: "", textContent: "— Chọn tỉnh —" }),
+      ...[...provinces, ABROAD].map((n) => el("option", { value: n, textContent: n })));
+    select.value = value || "";
+  }
+
+  async function checkAdmin() {
+    $("adminBtn").classList.toggle("on", !!adminKey);
+    $("adminActions").hidden = !adminKey;
+    if (!adminKey) return;
+    try {
+      const s = await api("/api/status");
+      if (!s.admin) throw new Error("Sai mật khẩu quản lý.");
+      if (!s.connected) {
+        toast("Chưa kết nối Google Drive — đang mở trang kết nối…");
+        window.open(`${API}/oauth/start?key=${encodeURIComponent(adminKey)}`, "_blank");
+      }
+    } catch (err) {
+      adminKey = null;
+      store.set("mem-admin", null);
+      $("adminBtn").classList.remove("on");
+      $("adminActions").hidden = true;
+      toast(err.message);
     }
   }
 
-  // --- Event Listeners Setup ---
-  function setupEvents() {
-    // Compact Upload Bar
-    if (dropzone) {
-      dropzone.addEventListener('click', () => fileInput && fileInput.click());
-      dropzone.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          if (fileInput) fileInput.click();
-        }
-      });
-
-      ['dragenter', 'dragover'].forEach((eventName) => {
-        dropzone.addEventListener(eventName, (e) => {
-          e.preventDefault();
-          dropzone.classList.add('drag-over');
-        });
-      });
-
-      ['dragleave', 'drop'].forEach((eventName) => {
-        dropzone.addEventListener(eventName, (e) => {
-          e.preventDefault();
-          dropzone.classList.remove('drag-over');
-        });
-      });
-
-      dropzone.addEventListener('drop', (e) => {
-        const dt = e.dataTransfer;
-        const files = Array.from(dt.files).filter((f) => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
-        if (files.length) {
-          files.forEach(processFile);
-        } else {
-          showToast('Vui lòng chọn tệp hình ảnh');
-        }
-      });
+  $("adminBtn").onclick = () => {
+    if (adminKey) {
+      if (!confirm("Thoát chế độ quản lý trên trình duyệt này?")) return;
+      adminKey = null;
+      store.set("mem-admin", null);
+      checkAdmin();
+      return;
     }
+    const key = prompt("Mật khẩu quản lý:");
+    if (!key) return;
+    adminKey = key.trim();
+    store.set("mem-admin", adminKey);
+    checkAdmin().then(() => adminKey && toast("✓ Đã vào chế độ quản lý"));
+  };
 
-    if (fileInput) {
-      fileInput.addEventListener('change', (e) => {
-        const files = Array.from(e.target.files);
-        files.forEach(processFile);
-        fileInput.value = '';
-      });
-    }
+  // ---------- upload ----------
+  let pending = [];
 
-    // Global Drag & Drop Overlay (drag anywhere on screen)
-    let dragCounter = 0;
-    window.addEventListener('dragenter', (e) => {
-      e.preventDefault();
-      dragCounter++;
-      if (globalDropOverlay) globalDropOverlay.hidden = false;
-    });
-
-    window.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      dragCounter--;
-      if (dragCounter <= 0) {
-        dragCounter = 0;
-        if (globalDropOverlay) globalDropOverlay.hidden = true;
-      }
-    });
-
-    window.addEventListener('dragover', (e) => {
-      e.preventDefault();
-    });
-
-    window.addEventListener('drop', (e) => {
-      e.preventDefault();
-      dragCounter = 0;
-      if (globalDropOverlay) globalDropOverlay.hidden = true;
-      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
-        const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
-        if (files.length) {
-          files.forEach(processFile);
-        } else {
-          showToast('Vui lòng chọn tệp hình ảnh (JPG, PNG, HEIC, WEBP)');
-        }
-      }
-    });
-
-    // Paste from clipboard (Ctrl+V)
-    window.addEventListener('paste', (e) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type.indexOf('image') !== -1) {
-          const file = items[i].getAsFile();
-          if (file) {
-            processFile(file);
-            showToast('Đang xử lý ảnh từ clipboard...');
-          }
-        }
-      }
-    });
-
-    // View Switcher Buttons
-    if (viewMapBtn) {
-      viewMapBtn.addEventListener('click', () => switchView('map'));
-    }
-    if (viewGridBtn) {
-      viewGridBtn.addEventListener('click', () => switchView('grid'));
-    }
-    if (viewTimelineBtn) {
-      viewTimelineBtn.addEventListener('click', () => switchView('timeline'));
-    }
-
-    // Search & Filter
-    searchInput.addEventListener('input', (e) => {
-      searchQuery = e.target.value.trim();
-      updateAllViews();
-    });
-
-    folderSelect.addEventListener('change', (e) => {
-      currentFilter = e.target.value;
-      updateAllViews();
-    });
-
-    sortSelect.addEventListener('change', (e) => {
-      sortBy = e.target.value;
-      updateAllViews();
-    });
-
-    // Lightbox
-    closeLightboxBtn.addEventListener('click', closeLightbox);
-    lightboxModal.addEventListener('click', (e) => {
-      if (e.target === lightboxModal) closeLightbox();
-    });
-
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        closeLightbox();
-        configModal.classList.remove('open');
-        closeLocationPicker();
-        cancelMapPinning();
-      }
-    });
-
-    // Copy embed link buttons
-    copyDirectLinkBtn.addEventListener('click', () => {
-      navigator.clipboard.writeText(directLinkInput.value).then(() => showToast('Đã copy Direct Link!'));
-    });
-    copyMarkdownBtn.addEventListener('click', () => {
-      navigator.clipboard.writeText(markdownLinkInput.value).then(() => showToast('Đã copy Markdown syntax!'));
-    });
-    copyHtmlBtn.addEventListener('click', () => {
-      navigator.clipboard.writeText(htmlLinkInput.value).then(() => showToast('Đã copy HTML tag!'));
-    });
-
-    // Delete photo
-    deletePhotoBtn.addEventListener('click', () => {
-      if (!activePhoto) return;
-      if (confirm(`Bạn có chắc muốn xóa ảnh "${activePhoto.title}" không?`)) {
-        photos = photos.filter((p) => p.id !== activePhoto.id);
-        savePhotos();
-        updateAllViews();
-        closeLightbox();
-        showToast('Đã xóa ảnh khỏi danh sách.');
-      }
-    });
-
-    // Config Modal
-    openConfigBtn.addEventListener('click', () => {
-      const cfg = loadSavedConfig();
-      clientIdInput.value = cfg.clientId || '';
-      folderNameInput.value = cfg.folderName || 'DriveGallery';
-      configModal.classList.add('open');
-    });
-
-    closeConfigBtn.addEventListener('click', () => {
-      configModal.classList.remove('open');
-    });
-
-    configModal.addEventListener('click', (e) => {
-      if (e.target === configModal) configModal.classList.remove('open');
-    });
-
-    if (quickConnectDriveBtn) {
-      quickConnectDriveBtn.addEventListener('click', connectGoogleDrive);
-    }
-
-    saveAndConnectBtn.addEventListener('click', () => {
-      const clientId = clientIdInput.value.trim();
-      const folderName = folderNameInput.value.trim() || 'DriveGallery';
-      if (!clientId) {
-        alert('Vui lòng nhập Google OAuth Client ID');
-        return;
-      }
-      saveConfig({ clientId, folderName });
-      configModal.classList.remove('open');
-      showToast('Đã lưu cấu hình. Đang kích hoạt kết nối Google...');
-      initGoogleAuth();
-      setTimeout(connectGoogleDrive, 300);
-    });
-
-    resetDemoBtn.addEventListener('click', () => {
-      if (confirm('Khôi phục danh sách ảnh mẫu khám phá ban đầu?')) {
-        photos = [...DEMO_PHOTOS];
-        savePhotos();
-        updateAllViews();
-        configModal.classList.remove('open');
-        showToast('Đã tải lại danh sách ảnh mẫu');
-      }
-    });
-
-    if (disconnectBtn) {
-      disconnectBtn.addEventListener('click', () => {
-        clearAuthToken();
-        driveFolderId = null;
-        const cfg = loadSavedConfig();
-        cfg.hasConnected = false;
-        saveConfig(cfg);
-        setConnectedState('local');
-        updateAllViews();
-        configModal.classList.remove('open');
-        showToast('Đã ngắt kết nối Google Drive. Dữ liệu lưu trên máy');
-      });
-    }
-
-    // Location Picker & Map Pinning Events
-    if (mapPinLocationBtn) mapPinLocationBtn.addEventListener('click', () => openLocationPicker());
-    if (closeLocPickerBtn) closeLocPickerBtn.addEventListener('click', closeLocationPicker);
-    if (locPickOnMapBtn) locPickOnMapBtn.addEventListener('click', startMapPinning);
-    if (cancelMapPinningBtn) cancelMapPinningBtn.addEventListener('click', cancelMapPinning);
-    if (locSearchInput) locSearchInput.addEventListener('input', (e) => onSearchInput(e.target.value));
-    if (locationPickerModal) {
-      locationPickerModal.addEventListener('click', (e) => {
-        if (e.target === locationPickerModal) closeLocationPicker();
-      });
-    }
+  const loadImage = (blob) => new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => resolve({ img, url });
+    img.onerror = () => reject(new Error("Không đọc được ảnh."));
+    img.src = url;
+  });
+  function resize(img, max, type, quality) {
+    const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = Object.assign(document.createElement("canvas"), { width: Math.round(img.naturalWidth * s), height: Math.round(img.naturalHeight * s) });
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return new Promise((r) => c.toBlob(r, type, quality)).then((blob) => ({ blob, width: c.width, height: c.height }));
   }
 
-  // --- Initialize App ---
-  function init() {
-    loadPhotos();
-    checkAndApplyAuthState();
-    initTravelMap();
-    updateAllViews();
-    setupEvents();
-    switchView('map');
+  async function prepare(file) {
+    let exif = {};
+    try { exif = (await exifr.parse(file, { gps: true, tiff: true, exif: true })) || {}; } catch {}
+    let source = file;
+    if (/heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)) {
+      if (!window.heic2any) throw new Error("Chưa tải xong bộ đọc HEIC, thử lại sau vài giây.");
+      source = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+    }
+    const { img, url } = await loadImage(source);
+    const full = await resize(img, 2560, "image/jpeg", 0.88);
+    const thumb = await resize(img, 480, "image/webp", 0.8);
+    const lat = exif.latitude ?? null, lng = exif.longitude ?? null;
+    const date = exif.DateTimeOriginal || exif.CreateDate;
+    return {
+      name: file.name.replace(/\.(heic|heif|png|webp|avif)$/i, ".jpg"),
+      preview: url,
+      full, thumb, lat, lng,
+      province: lat != null ? provinceAt(lat, lng) || ABROAD : "",
+      takenAt: date instanceof Date && !isNaN(date) ? date.toISOString().slice(0, 10) : "",
+      camera: [exif.Make, exif.Model].filter(Boolean).join(" ").replace(/^(\w+) \1/i, "$1").trim(),
+    };
+  }
 
-    // Check Google Auth library
-    const checkGisInterval = setInterval(() => {
-      if (window.google?.accounts?.oauth2) {
-        clearInterval(checkGisInterval);
-        initGoogleAuth();
+  $("addBtn").onclick = () => $("fileInput").click();
+  $("fileInput").onchange = async (e) => {
+    const files = [...e.target.files];
+    e.target.value = "";
+    if (!files.length) return;
+    pending = [];
+    $("uploadList").replaceChildren(el("p", { className: "muted small", textContent: `Đang đọc ${files.length} ảnh…` }));
+    $("uploadDlg").showModal();
+    for (const f of files) {
+      try { pending.push(await prepare(f)); } catch (err) { toast(`${f.name}: ${err.message}`); }
+    }
+    renderPending();
+  };
+
+  function renderPending() {
+    $("uploadList").replaceChildren(...pending.map((p) => {
+      const sel = el("select");
+      provinceOptions(sel, p.province);
+      sel.onchange = () => (p.province = sel.value);
+      const date = el("input", { type: "date", value: p.takenAt });
+      date.onchange = () => (p.takenAt = date.value);
+      const title = el("input", { placeholder: "Tiêu đề (không bắt buộc)", className: "full" });
+      title.oninput = () => (p.title = title.value);
+      p.state = el("div", { className: "up-state full", textContent: p.lat != null ? "Có GPS" : "Không có GPS — chọn tỉnh" });
+      return el("div", { className: "up-row" },
+        el("img", { src: p.preview, alt: "" }),
+        el("div", { className: "up-fields" }, sel, date, title, p.state));
+    }));
+    $("uploadGo").disabled = !pending.length;
+  }
+
+  $("uploadGo").onclick = async () => {
+    const missing = pending.filter((p) => !p.province && !p.done);
+    if (missing.length && !confirm(`${missing.length} ảnh chưa chọn tỉnh, vẫn tải lên?`)) return;
+    $("uploadGo").disabled = true;
+    let ok = 0;
+    for (const p of pending) {
+      if (p.done) continue;
+      p.state.className = "up-state full";
+      p.state.textContent = "Đang tải lên…";
+      try {
+        const fd = new FormData();
+        fd.append("file", new File([p.full.blob], p.name, { type: "image/jpeg" }));
+        fd.append("thumb", new File([p.thumb.blob], p.name.replace(/\.\w+$/, ".webp"), { type: "image/webp" }));
+        fd.append("width", p.full.width);
+        fd.append("height", p.full.height);
+        fd.append("camera", p.camera || "");
+        fd.append("meta", JSON.stringify({ province: p.province, takenAt: p.takenAt, title: p.title || "", lat: p.lat, lng: p.lng }));
+        photos.push(await api("/api/photos", { method: "POST", body: fd }));
+        p.done = true;
+        ok++;
+        p.state.className = "up-state full ok";
+        p.state.textContent = "✓ Đã tải lên";
+      } catch (err) {
+        p.state.className = "up-state full err";
+        p.state.textContent = err.message;
       }
-    }, 200);
-  }
+    }
+    renderAll();
+    $("uploadGo").disabled = false;
+    toast(`✓ Đã tải lên ${ok} ảnh`);
+    if (pending.every((p) => p.done)) setTimeout(() => $("uploadDlg").close(), 600);
+  };
 
-  // Run on DOM ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
+  // ---------- start ----------
+  async function start() {
+    geo = await (await fetch("vn-34.json")).json();
+    provinces = geo.features.map((f) => f.properties.name).sort((a, b) => a.localeCompare(b, "vi"));
+    provinceOptions($("editForm").province);
+    initMap();
+    try {
+      photos = await api("/api/photos");
+    } catch (err) {
+      toast(`Không tải được ảnh: ${err.message}`);
+    }
+    renderAll();
+    $("sideBack").onclick = () => {
+      selected = null;
+      renderAll();
+      map.flyToBounds(L.latLngBounds([8.2, 102.1], [23.4, 115.5]), { padding: [10, 10], duration: 0.6 });
+    };
+    checkAdmin();
   }
+  start();
 })();
