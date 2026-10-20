@@ -166,11 +166,25 @@ button, select, .ghost, .primary, .outline, .btn-sm {
   background: var(--good);
   box-shadow: 0 0 6px var(--good);
 }
-.status-pill.demo {
-  color: var(--warn);
+.status-pill.local {
+  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--primary);
+  font-weight: 500;
 }
-.status-pill.demo .status-dot {
+.status-pill.local .status-dot {
+  background: var(--primary);
+  box-shadow: 0 0 5px var(--primary);
+}
+.status-pill.reauth {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--warn);
+  font-weight: 600;
+}
+.status-pill.reauth .status-dot {
   background: var(--warn);
+  box-shadow: 0 0 6px var(--warn);
 }
 
 [hidden] {

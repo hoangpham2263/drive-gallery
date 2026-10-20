@@ -8,7 +8,7 @@
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="brand/apple-touch-icon.png" />
-    <link rel="stylesheet" href="style.css?v=20261020_09" />
+    <link rel="stylesheet" href="style.css?v=20261020_10" />
     <!-- Leaflet CSS for Travel Map -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <!-- Leaflet JS for Travel Map -->
@@ -35,13 +35,17 @@
         </div>
       </header>
 
-      <!-- Status Bar -->
+      <!-- Storage & Sync Bar -->
       <div class="bar-strip">
         <div class="bar-left">
-          <span id="connectionBadge" class="status-pill demo">
+          <span id="connectionBadge" class="status-pill local">
             <span class="status-dot"></span>
-            <span id="connectionText">Chế độ Demo</span>
+            <span id="connectionText">Bộ nhớ thiết bị (Đã lưu)</span>
           </span>
+          <button id="quickConnectDriveBtn" class="btn btn-outline btn-sm" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+            Đồng bộ Google Drive
+          </button>
           <a id="openDriveFolderBtn" class="btn btn-outline btn-sm" href="https://drive.google.com/" target="_blank" rel="noopener" hidden>
             📁 Thư mục DriveGallery ↗
           </a>
@@ -52,14 +56,6 @@
             Cấu hình Drive
           </button>
         </div>
-      </div>
-
-      <!-- Banner note -->
-      <div id="demoBanner" class="banner">
-        <div>
-          <strong>Chế độ Xem thử (Demo):</strong> Kéo thả ảnh kỷ niệm của bạn vào để tự động ghim vị trí lên bản đồ và trích xuất EXIF.
-        </div>
-        <button id="connectDrivePromptBtn" class="btn btn-primary btn-sm" type="button">Kết nối Google Drive của bạn</button>
       </div>
 
       <!-- Compact Upload & Action Strip -->
@@ -351,7 +347,7 @@
 
         <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap;">
           <button id="disconnectBtn" class="btn btn-danger" type="button" hidden>Đăng xuất Drive</button>
-          <button id="resetDemoBtn" class="btn btn-outline" type="button">Khôi phục Demo</button>
+          <button id="resetDemoBtn" class="btn btn-outline" type="button">Khôi phục ảnh mẫu</button>
           <button id="saveAndConnectBtn" class="btn btn-primary" type="button">Lưu &amp; Kết nối Google Drive</button>
         </div>
       </div>
@@ -360,6 +356,6 @@
     <!-- Toast Notification -->
     <div id="toast" class="toast">Đã sao chép vào bộ nhớ tạm!</div>
 
-    <script src="app.js?v=20261020_09"></script>
+    <script src="app.js?v=20261020_10"></script>
   </body>
 </html>

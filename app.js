@@ -60,10 +60,9 @@
   const noGpsBanner = document.getElementById('noGpsBanner');
   const quickLocationChips = document.getElementById('quickLocationChips');
   const openDriveFolderBtn = document.getElementById('openDriveFolderBtn');
+  const quickConnectDriveBtn = document.getElementById('quickConnectDriveBtn');
   const connectionBadge = document.getElementById('connectionBadge');
   const connectionText = document.getElementById('connectionText');
-  const demoBanner = document.getElementById('demoBanner');
-  const connectDrivePromptBtn = document.getElementById('connectDrivePromptBtn');
 
   // Lightbox Modal
   const lightboxModal = document.getElementById('lightboxModal');
@@ -265,12 +264,6 @@
   }
 
   function loadPhotos() {
-    const savedToken = sessionStorage.getItem('drive_access_token');
-    const expiresAt = parseInt(sessionStorage.getItem('drive_token_expires') || '0', 10);
-    if (savedToken && expiresAt > Date.now()) {
-      photos = [];
-      return;
-    }
     try {
       const raw = localStorage.getItem(STORAGE_KEY_ITEMS);
       if (raw) {
@@ -283,7 +276,7 @@
     } catch (e) {
       console.warn('Error reading stored photos', e);
     }
-    // Fallback to demo items
+    // Sample items for initial exploration
     photos = [...DEMO_PHOTOS];
   }
 
@@ -1339,9 +1332,11 @@
         // Show only real Google Drive photos when connected
         photos = drivePhotos;
         updateAllViews();
-      } else {
-        // Folder exists on Drive but is empty
-        photos = [];
+        // Merge Drive photos with local photos (prioritize Drive photos)
+        const driveIds = new Set(drivePhotos.map(d => d.id));
+        const localOnly = photos.filter(p => !driveIds.has(p.id) && !p.id.startsWith('demo-'));
+        photos = [...drivePhotos, ...localOnly];
+        savePhotos();
         updateAllViews();
       }
     } catch (err) {
@@ -1349,14 +1344,29 @@
     }
   }
 
-  function restoreSessionAuth() {
-    const savedToken = sessionStorage.getItem('drive_access_token');
-    const expiresAt = parseInt(sessionStorage.getItem('drive_token_expires') || '0', 10);
-    if (savedToken && expiresAt > Date.now()) {
-      accessToken = savedToken;
-      photos = [];
-      setConnectedState(true);
-      ensureDriveFolder().then(() => syncDrivePhotos());
+  // --- Token Persistence & Storage ---
+  function saveAuthToken(token, expiresInMs) {
+    accessToken = token;
+    const expiresAt = Date.now() + expiresInMs;
+    localStorage.setItem('drive_access_token', token);
+    localStorage.setItem('drive_token_expires', expiresAt.toString());
+    sessionStorage.setItem('drive_access_token', token);
+    sessionStorage.setItem('drive_token_expires', expiresAt.toString());
+  }
+
+  function clearAuthToken() {
+    accessToken = null;
+    localStorage.removeItem('drive_access_token');
+    localStorage.removeItem('drive_token_expires');
+    sessionStorage.removeItem('drive_access_token');
+    sessionStorage.removeItem('drive_token_expires');
+  }
+
+  function restoreAuthToken() {
+    const token = localStorage.getItem('drive_access_token') || sessionStorage.getItem('drive_access_token');
+    const expiresAt = parseInt(localStorage.getItem('drive_token_expires') || sessionStorage.getItem('drive_token_expires') || '0', 10);
+    if (token && expiresAt > Date.now()) {
+      accessToken = token;
       return true;
     }
     return false;
@@ -1373,21 +1383,17 @@
           callback: async (tokenResponse) => {
             if (tokenResponse.error !== undefined) {
               console.error('OAuth token error', tokenResponse);
-              alert('Lỗi xác thực Google: ' + (tokenResponse.error_description || tokenResponse.error));
               showToast('Lỗi xác thực Google Drive');
+              setConnectedState('reauth');
               return;
             }
-            accessToken = tokenResponse.access_token;
             const expiresIn = (tokenResponse.expires_in || 3500) * 1000;
-            sessionStorage.setItem('drive_access_token', accessToken);
-            sessionStorage.setItem('drive_token_expires', (Date.now() + expiresIn).toString());
+            saveAuthToken(tokenResponse.access_token, expiresIn);
             config.hasConnected = true;
             saveConfig(config);
 
-            photos = [];
-            updateAllViews();
-            setConnectedState(true);
-            showToast('✅ Đã kết nối Google Drive! Đang chuẩn bị thư mục DriveGallery...');
+            setConnectedState('connected');
+            showToast('✅ Đã kết nối Google Drive! Đang đồng bộ ảnh...');
 
             const fId = await ensureDriveFolder();
             if (fId) updateDriveFolderUI(fId);
@@ -1395,27 +1401,66 @@
           }
         });
 
-        // Auto restore previous session if available
-        restoreSessionAuth();
+        checkAndApplyAuthState();
       } catch (e) {
         console.warn('Error initTokenClient', e);
       }
     }
   }
 
-  function setConnectedState(isConnected) {
-    if (isConnected) {
+  function checkAndApplyAuthState() {
+    const config = loadSavedConfig();
+    const hasToken = restoreAuthToken();
+
+    if (hasToken) {
+      setConnectedState('connected');
+      ensureDriveFolder().then(() => syncDrivePhotos());
+    } else if (config.hasConnected && config.clientId) {
+      setConnectedState('reauth');
+      if (tokenClient) {
+        try {
+          tokenClient.requestAccessToken({ prompt: '' });
+        } catch (e) {
+          console.warn('Silent refresh error', e);
+        }
+      }
+    } else {
+      setConnectedState('local');
+    }
+  }
+
+  function setConnectedState(state) {
+    // state: 'connected' | 'reauth' | 'local'
+    if (state === 'connected') {
       connectionBadge.className = 'status-pill connected';
-      connectionText.textContent = 'Đã kết nối Drive';
-      demoBanner.hidden = true;
-      demoBanner.style.display = 'none';
+      connectionText.textContent = 'Google Drive: Đã kết nối';
+      if (quickConnectDriveBtn) {
+        quickConnectDriveBtn.hidden = true;
+        quickConnectDriveBtn.style.display = 'none';
+      }
       if (driveFolderId) updateDriveFolderUI(driveFolderId);
       if (disconnectBtn) disconnectBtn.hidden = false;
+    } else if (state === 'reauth') {
+      connectionBadge.className = 'status-pill reauth';
+      connectionText.textContent = 'Drive: Cần làm mới phiên';
+      if (quickConnectDriveBtn) {
+        quickConnectDriveBtn.innerHTML = '🔄 Kết nối lại Drive';
+        quickConnectDriveBtn.hidden = false;
+        quickConnectDriveBtn.style.display = 'inline-flex';
+      }
+      if (openDriveFolderBtn) {
+        openDriveFolderBtn.hidden = true;
+        openDriveFolderBtn.style.display = 'none';
+      }
+      if (disconnectBtn) disconnectBtn.hidden = false;
     } else {
-      connectionBadge.className = 'status-pill demo';
-      connectionText.textContent = 'Chế độ Demo';
-      demoBanner.hidden = false;
-      demoBanner.style.display = 'flex';
+      connectionBadge.className = 'status-pill local';
+      connectionText.textContent = 'Bộ nhớ thiết bị (Đã lưu)';
+      if (quickConnectDriveBtn) {
+        quickConnectDriveBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg> Đồng bộ Google Drive';
+        quickConnectDriveBtn.hidden = false;
+        quickConnectDriveBtn.style.display = 'inline-flex';
+      }
       if (openDriveFolderBtn) {
         openDriveFolderBtn.hidden = true;
         openDriveFolderBtn.style.display = 'none';
@@ -1616,7 +1661,9 @@
       if (e.target === configModal) configModal.classList.remove('open');
     });
 
-    connectDrivePromptBtn.addEventListener('click', connectGoogleDrive);
+    if (quickConnectDriveBtn) {
+      quickConnectDriveBtn.addEventListener('click', connectGoogleDrive);
+    }
 
     saveAndConnectBtn.addEventListener('click', () => {
       const clientId = clientIdInput.value.trim();
@@ -1633,40 +1680,34 @@
     });
 
     resetDemoBtn.addEventListener('click', () => {
-      if (confirm('Khôi phục danh sách ảnh mẫu Demo ban đầu?')) {
+      if (confirm('Khôi phục danh sách ảnh mẫu khám phá ban đầu?')) {
         photos = [...DEMO_PHOTOS];
         savePhotos();
         updateAllViews();
         configModal.classList.remove('open');
-        showToast('Đã khôi phục dữ liệu Demo thành công');
+        showToast('Đã tải lại danh sách ảnh mẫu');
       }
     });
 
     if (disconnectBtn) {
       disconnectBtn.addEventListener('click', () => {
-        sessionStorage.removeItem('drive_access_token');
-        sessionStorage.removeItem('drive_token_expires');
-        accessToken = null;
+        clearAuthToken();
         driveFolderId = null;
         const cfg = loadSavedConfig();
         cfg.hasConnected = false;
         saveConfig(cfg);
-        setConnectedState(false);
-        photos = [...DEMO_PHOTOS];
+        setConnectedState('local');
         updateAllViews();
         configModal.classList.remove('open');
-        showToast('Đã đăng xuất Google Drive, quay về chế độ Demo');
+        showToast('Đã ngắt kết nối Google Drive. Dữ liệu lưu trên máy');
       });
     }
   }
 
   // --- Initialize App ---
   function init() {
-    const isRestored = restoreSessionAuth();
-    if (!isRestored) {
-      loadPhotos();
-      setConnectedState(false);
-    }
+    loadPhotos();
+    checkAndApplyAuthState();
     initTravelMap();
     updateAllViews();
     setupEvents();
