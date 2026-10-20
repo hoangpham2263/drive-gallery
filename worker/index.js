@@ -181,29 +181,34 @@ async function handle(req, env, ctx) {
   if (!path.startsWith("/api/")) return new Response("Not found", { status: 404 });
   if (!isAdmin(req, env)) return json({ error: "Sai mật khẩu quản lý." }, 401);
 
-  if (path === "/api/photos" && req.method === "POST") {
+  // Step 1 (parallel-safe): store one file in Drive, return its id. Does not touch the list.
+  if (path === "/api/upload" && req.method === "POST") {
     const form = await req.formData();
     const file = form.get("file");
-    const thumb = form.get("thumb");
     if (!(file instanceof File)) return json({ error: "Thiếu file ảnh." }, 400);
-    const meta = cleanMeta(JSON.parse(form.get("meta") || "{}"));
-    const fileId = await uploadFile(env, file.name, file.type || "image/jpeg", await file.arrayBuffer());
-    const thumbId = thumb instanceof File ? await uploadFile(env, `thumb-${file.name}`, thumb.type || "image/webp", await thumb.arrayBuffer()) : null;
-    const item = {
+    const id = await uploadFile(env, file.name, file.type || "image/jpeg", await file.arrayBuffer());
+    return json({ id });
+  }
+
+  // Step 2: add every uploaded photo to the list in one write, so parallel uploads never overwrite each other
+  if (path === "/api/photos" && req.method === "POST") {
+    const { items = [] } = await req.json();
+    const now = new Date().toISOString();
+    const added = items.filter((x) => x && x.fileId).map((x) => ({
       id: crypto.randomUUID().slice(0, 12),
-      fileId,
-      thumbId,
-      name: file.name,
-      width: Number(form.get("width")) || null,
-      height: Number(form.get("height")) || null,
-      camera: String(form.get("camera") || "").slice(0, 80) || null,
-      createdAt: new Date().toISOString(),
-      ...meta,
-    };
+      fileId: String(x.fileId),
+      thumbId: x.thumbId ? String(x.thumbId) : null,
+      name: String(x.name || "").slice(0, 200),
+      width: Number(x.width) || null,
+      height: Number(x.height) || null,
+      camera: String(x.camera || "").slice(0, 80) || null,
+      createdAt: now,
+      ...cleanMeta(x),
+    }));
     const list = await readList(env);
-    list.push(item);
+    list.push(...added);
     await writeList(env, list);
-    return json(item);
+    return json(added);
   }
 
   const one = path.match(/^\/api\/photos\/([\w-]+)$/);

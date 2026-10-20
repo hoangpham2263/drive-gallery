@@ -356,18 +356,22 @@
   // ---------- upload ----------
   let pending = [];
 
-  const loadImage = (blob) => new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => resolve({ img, url });
-    img.onerror = () => reject(new Error("Không đọc được ảnh."));
-    img.src = url;
-  });
-  function resize(img, max, type, quality) {
-    const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
-    const c = Object.assign(document.createElement("canvas"), { width: Math.round(img.naturalWidth * s), height: Math.round(img.naturalHeight * s) });
-    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-    return new Promise((r) => c.toBlob(r, type, quality)).then((blob) => ({ blob, width: c.width, height: c.height }));
+  // Run tasks with at most `limit` in flight
+  async function pool(items, limit, task) {
+    const out = new Array(items.length);
+    let next = 0;
+    const worker = async () => { while (next < items.length) { const i = next++; out[i] = await task(items[i], i); } };
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+    return out;
+  }
+
+  async function resize(bitmap, max, type, quality) {
+    const s = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+    const w = Math.round(bitmap.width * s), h = Math.round(bitmap.height * s);
+    const c = Object.assign(document.createElement("canvas"), { width: w, height: h });
+    c.getContext("2d").drawImage(bitmap, 0, 0, w, h);
+    const blob = await new Promise((r) => c.toBlob(r, type, quality));
+    return { blob, width: w, height: h };
   }
 
   async function prepare(file) {
@@ -378,14 +382,14 @@
       if (!window.heic2any) throw new Error("Chưa tải xong bộ đọc HEIC, thử lại sau vài giây.");
       source = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
     }
-    const { img, url } = await loadImage(source);
-    const full = await resize(img, 2560, "image/jpeg", 0.88);
-    const thumb = await resize(img, 480, "image/webp", 0.8);
+    const bitmap = await createImageBitmap(source);
+    const [full, thumb] = await Promise.all([resize(bitmap, 2560, "image/jpeg", 0.88), resize(bitmap, 480, "image/webp", 0.8)]);
+    bitmap.close();
     const lat = exif.latitude ?? null, lng = exif.longitude ?? null;
     const date = exif.DateTimeOriginal || exif.CreateDate;
     return {
       name: file.name.replace(/\.(heic|heif|png|webp|avif)$/i, ".jpg"),
-      preview: url,
+      preview: URL.createObjectURL(thumb.blob),
       full, thumb, lat, lng,
       province: lat != null ? provinceAt(lat, lng) || ABROAD : "",
       takenAt: date instanceof Date && !isNaN(date) ? date.toISOString().slice(0, 10) : "",
@@ -401,9 +405,14 @@
     pending = [];
     $("uploadList").replaceChildren(el("p", { className: "muted small", textContent: `Đang đọc ${files.length} ảnh…` }));
     $("uploadDlg").showModal();
-    for (const f of files) {
-      try { pending.push(await prepare(f)); } catch (err) { toast(`${f.name}: ${err.message}`); }
-    }
+    let done = 0;
+    const note = $("uploadList").firstChild;
+    const ready = await pool(files, Math.max(2, Math.min(4, navigator.hardwareConcurrency || 4)), async (f) => {
+      try { return await prepare(f); }
+      catch (err) { toast(`${f.name}: ${err.message}`); return null; }
+      finally { note.textContent = `Đang đọc ảnh ${++done}/${files.length}…`; }
+    });
+    pending = ready.filter(Boolean);
     renderPending();
   };
 
@@ -424,37 +433,58 @@
     $("uploadGo").disabled = !pending.length;
   }
 
+  const UPLOAD_LIMIT = 4;
+  const sendFile = async (blob, name, type) => {
+    const fd = new FormData();
+    fd.append("file", new File([blob], name, { type }));
+    return (await api("/api/upload", { method: "POST", body: fd })).id;
+  };
+
   $("uploadGo").onclick = async () => {
-    const missing = pending.filter((p) => !p.province && !p.done);
+    const todo = pending.filter((p) => !p.done);
+    const missing = todo.filter((p) => !p.province);
     if (missing.length && !confirm(`${missing.length} ảnh chưa chọn tỉnh, vẫn tải lên?`)) return;
     $("uploadGo").disabled = true;
-    let ok = 0;
-    for (const p of pending) {
-      if (p.done) continue;
+    const t0 = performance.now();
+    // 1) files to Drive, several photos at once (full + thumbnail in parallel per photo)
+    await pool(todo, UPLOAD_LIMIT, async (p) => {
       p.state.className = "up-state full";
       p.state.textContent = "Đang tải lên…";
       try {
-        const fd = new FormData();
-        fd.append("file", new File([p.full.blob], p.name, { type: "image/jpeg" }));
-        fd.append("thumb", new File([p.thumb.blob], p.name.replace(/\.\w+$/, ".webp"), { type: "image/webp" }));
-        fd.append("width", p.full.width);
-        fd.append("height", p.full.height);
-        fd.append("camera", p.camera || "");
-        fd.append("meta", JSON.stringify({ province: p.province, takenAt: p.takenAt, title: p.title || "", lat: p.lat, lng: p.lng }));
-        photos.push(await api("/api/photos", { method: "POST", body: fd }));
-        p.done = true;
-        ok++;
-        p.state.className = "up-state full ok";
-        p.state.textContent = "✓ Đã tải lên";
+        const [fileId, thumbId] = await Promise.all([
+          sendFile(p.full.blob, p.name, "image/jpeg"),
+          sendFile(p.thumb.blob, p.name.replace(/\.\w+$/, ".webp"), "image/webp"),
+        ]);
+        Object.assign(p, { fileId, thumbId });
+        p.state.textContent = "Đã tải file, đang lưu…";
       } catch (err) {
         p.state.className = "up-state full err";
         p.state.textContent = err.message;
       }
+    });
+    // 2) add them all to the list in one request
+    const uploaded = todo.filter((p) => p.fileId);
+    if (uploaded.length) {
+      try {
+        const added = await api("/api/photos", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ items: uploaded.map((p) => ({
+            fileId: p.fileId, thumbId: p.thumbId, name: p.name, width: p.full.width, height: p.full.height,
+            camera: p.camera, province: p.province, takenAt: p.takenAt, title: p.title || "", lat: p.lat, lng: p.lng,
+          })) }),
+        });
+        photos.push(...added);
+        for (const p of uploaded) { p.done = true; p.state.className = "up-state full ok"; p.state.textContent = "✓ Đã tải lên"; }
+      } catch (err) {
+        for (const p of uploaded) { p.state.className = "up-state full err"; p.state.textContent = err.message; }
+      }
     }
     renderAll();
     $("uploadGo").disabled = false;
-    toast(`✓ Đã tải lên ${ok} ảnh`);
-    if (pending.every((p) => p.done)) setTimeout(() => $("uploadDlg").close(), 600);
+    const ok = todo.filter((p) => p.done).length;
+    toast(`✓ Đã tải lên ${ok}/${todo.length} ảnh trong ${((performance.now() - t0) / 1000).toFixed(1)} giây`);
+    if (pending.every((p) => p.done)) setTimeout(() => $("uploadDlg").close(), 800);
   };
 
   // ---------- start ----------
