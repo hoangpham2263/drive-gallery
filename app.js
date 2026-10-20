@@ -318,40 +318,62 @@
     select.value = value || "";
   }
 
+  const connectDrive = () => {
+    toast("Chọn tài khoản Google để lưu ảnh");
+    window.open(`${API}/oauth/start?key=${encodeURIComponent(adminKey)}`, "_blank");
+  };
+
+  function logout() {
+    adminKey = null;
+    store.set("mem-admin", null);
+    renderAdmin(null);
+    if ($("viewer").open) showViewer();
+    toast("Đã thoát chế độ quản lý");
+  }
+
+  // Signed out: lock button only. Signed in: green bar with Drive account, + Thêm ảnh, edit in viewer.
+  function renderAdmin(status) {
+    const on = !!(adminKey && status?.admin);
+    $("adminBtn").hidden = on;
+    $("adminActions").hidden = !(on && status.connected);
+    $("adminBar").hidden = !on;
+    if (!on) return;
+    $("adminBar").classList.toggle("warn", !status.connected);
+    $("adminText").textContent = status.connected
+      ? `Đang quản lý · Ảnh lưu vào Google Drive: ${status.email || "đã kết nối"}`
+      : "Đang quản lý · Chưa kết nối Google Drive";
+    $("connectBtn").textContent = status.connected ? "Đổi tài khoản Drive" : "Kết nối Drive";
+  }
+
   async function checkAdmin() {
-    $("adminBtn").classList.toggle("on", !!adminKey);
-    $("adminActions").hidden = !adminKey;
-    if (!adminKey) return;
+    if (!adminKey) return renderAdmin(null);
     try {
       const s = await api("/api/status");
       if (!s.admin) throw new Error("Sai mật khẩu quản lý.");
-      if (!s.connected) {
-        toast("Chọn tài khoản Google để lưu ảnh");
-        window.open(`${API}/oauth/start?key=${encodeURIComponent(adminKey)}`, "_blank");
-      }
+      renderAdmin(s);
+      return s;
     } catch (err) {
       adminKey = null;
       store.set("mem-admin", null);
-      $("adminBtn").classList.remove("on");
-      $("adminActions").hidden = true;
+      renderAdmin(null);
       toast(err.message);
     }
   }
 
-  $("adminBtn").onclick = () => {
-    if (adminKey) {
-      if (!confirm("Thoát chế độ quản lý trên trình duyệt này?")) return;
-      adminKey = null;
-      store.set("mem-admin", null);
-      checkAdmin();
-      return;
-    }
+  $("adminBtn").onclick = async () => {
     const key = prompt("Mật khẩu quản lý:");
     if (!key) return;
     adminKey = key.trim();
     store.set("mem-admin", adminKey);
-    checkAdmin().then(() => adminKey && toast("✓ Đã vào chế độ quản lý"));
+    const s = await checkAdmin();
+    if (!s) return;
+    toast("✓ Đã vào chế độ quản lý");
+    if (!s.connected) connectDrive();
   };
+  $("logoutBtn").onclick = logout;
+  $("connectBtn").onclick = connectDrive;
+  // Coming back from the Google tab: refresh the Drive status
+  window.addEventListener("focus", () => adminKey && checkAdmin());
 
   // ---------- upload ----------
   let pending = [];

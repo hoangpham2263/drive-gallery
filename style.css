@@ -71,6 +71,12 @@ button:disabled { opacity: .5; cursor: default; }
 .link:hover { background: none; text-decoration: underline; }
 .actions { display: flex; justify-content: flex-end; gap: 8px; }
 
+/* Admin bar: only visible when signed in to manage */
+.admin-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--primary); border-radius: 12px; background: color-mix(in srgb, var(--primary) 6%, var(--bg)); font-size: 14px; }
+.admin-dot { width: 8px; height: 8px; border-radius: 50%; background: #16a34a; flex: none; }
+.admin-bar.warn .admin-dot { background: var(--warn); }
+.admin-text { flex: 1; min-width: 0; }
+
 /* Map */
 .map-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .progress { height: 6px; border-radius: 999px; background: var(--soft); overflow: hidden; }
@@ -157,4 +163,6 @@ button:disabled { opacity: .5; cursor: default; }
   input, select, textarea { font-size: 16px !important; }
   .map { height: 460px; }
   .up-fields, .edit { grid-template-columns: 1fr; }
+  .admin-bar { flex-wrap: wrap; }
+  .admin-bar .actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
 }

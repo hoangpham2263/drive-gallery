@@ -8,18 +8,27 @@
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <link rel="stylesheet" href="style.css?v=1" />
+    <link rel="stylesheet" href="style.css?v=2" />
   </head>
   <body>
     <main class="wrap">
       <header class="top">
         <a class="brand" href="https://hoangpham.is-a.dev" aria-label="HoangPham"><img src="brand/hp-icon.svg" alt="HoangPham" width="40" height="40" /></a>
         <div class="top-text"><h1>Hoang's Memories</h1></div>
-        <button id="adminBtn" class="icon" type="button" title="Quản lý" aria-label="Quản lý">
+        <button id="adminBtn" class="icon" type="button" title="Đăng nhập quản lý" aria-label="Đăng nhập quản lý">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
         </button>
         <a class="back" href="https://hoangpham.is-a.dev/tools">← Portfolio</a>
       </header>
+
+      <div id="adminBar" class="admin-bar" hidden>
+        <span class="admin-dot"></span>
+        <span id="adminText" class="admin-text"></span>
+        <div class="actions">
+          <button id="connectBtn" type="button">Kết nối Drive</button>
+          <button id="logoutBtn" type="button">Thoát</button>
+        </div>
+      </div>
 
       <section class="card map-card">
         <div class="map-head">
@@ -105,6 +114,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script src="vendor/exifr.full.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
-    <script src="app.js?v=4"></script>
+    <script src="app.js?v=5"></script>
   </body>
 </html>
