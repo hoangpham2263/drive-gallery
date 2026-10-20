@@ -3,8 +3,8 @@
 // the photo list (metadata) lives in KV and is mirrored to memories.json in Drive.
 const ORIGINS = ["https://hoangpham.is-a.dev", "http://localhost:8000", "http://localhost:4334"];
 const SCOPE = "openid email https://www.googleapis.com/auth/drive.file";
-// Only this Google account may be connected as the photo storage
-const OWNER_EMAIL = "hoangpham2263@gmail.com";
+// Only these Google accounts (mine) may be connected as the photo storage
+const OWNER_EMAILS = ["quochoang.idx@gmail.com", "hoangpham2263@gmail.com"];
 const FOLDER_NAME = "Hoang's Memories";
 const LIST_KEY = "photos";
 
@@ -128,7 +128,6 @@ async function handle(req, env, ctx) {
       access_type: "offline",
       // Always show the account chooser, so Google never silently picks another signed-in account
       prompt: "consent select_account",
-      login_hint: OWNER_EMAIL,
     });
     return Response.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${q}`, 302);
   }
@@ -151,7 +150,7 @@ async function handle(req, env, ctx) {
     const page = (msg, status = 200) => new Response(`<meta charset=utf-8><p style='font:16px system-ui;padding:24px'>${msg}</p>`, { status, headers: { "content-type": "text/html; charset=utf-8" } });
     // id_token comes straight from Google's token endpoint over TLS, so its payload can be read directly
     const claims = t.id_token ? JSON.parse(atob(t.id_token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))) : {};
-    if (claims.email !== OWNER_EMAIL) return page(`Tài khoản ${claims.email || "này"} không đúng. Hãy đóng tab, bấm lại ổ khóa và chọn ${OWNER_EMAIL}.`, 403);
+    if (!OWNER_EMAILS.includes(claims.email)) return page(`Tài khoản ${claims.email || "này"} không có quyền. Hãy đóng tab, bấm lại ổ khóa và chọn ${OWNER_EMAILS.join(" hoặc ")}.`, 403);
     if (!t.refresh_token) return page("Google không trả quyền truy cập lâu dài, thử lại.", 400);
     await env.MEM.put("refresh_token", t.refresh_token);
     await env.MEM.put("access_token", JSON.stringify({ token: t.access_token, exp: Date.now() + t.expires_in * 1000 }));
