@@ -965,6 +965,41 @@ button, select, .ghost, .primary, .outline, .btn-sm {
   gap: 12px;
 }
 
+.loc-chips-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.loc-chip-btn {
+  background: var(--soft);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.loc-chip-btn:hover {
+  background: #ff4d4f;
+  border-color: #ff4d4f;
+  color: #fff;
+}
+.no-gps-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  background: rgba(220, 38, 38, 0.88);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  color: #fff;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
 @media (max-width: 640px) {
   .map-wrapper { height: 380px; }
   .view-switcher-bar { flex-direction: column; align-items: stretch; }

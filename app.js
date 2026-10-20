@@ -325,7 +325,7 @@
     return `${make} ${model}`.trim() || 'Camera';
   }
 
-  // --- Travel Map (Leaflet & CartoDB Dark Matter) ---
+  // --- Travel Map (Leaflet & ESRI Dark Gray - No Watermark, No API Key) ---
   function initTravelMap() {
     if (travelMap || !window.L || !travelMapEl) return;
     try {
@@ -336,11 +336,16 @@
         scrollWheelZoom: true
       });
 
-      // CartoDB Dark Matter tile layer
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 19
+      // ESRI World Dark Gray Base (Clean, fast, no watermark)
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+        maxZoom: 16
+      }).addTo(travelMap);
+
+      // ESRI Reference overlay (Labels & city names)
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '',
+        maxZoom: 16
       }).addTo(travelMap);
 
       markersLayer = L.layerGroup().addTo(travelMap);
@@ -474,16 +479,22 @@
 
     destArray.forEach((dest) => {
       const coverPhoto = dest.photos[0];
+      const hasGps = !!(dest.lat && dest.lng);
       const card = document.createElement('div');
       card.className = 'destination-card';
       card.innerHTML = `
         <div class="destination-thumb">
           <img src="${coverPhoto.url}" alt="${dest.name}" loading="lazy" />
           <span class="places-badge">${dest.photos.length} kỷ niệm</span>
+          ${!hasGps ? '<span class="no-gps-badge">📍 Chưa có GPS</span>' : ''}
         </div>
         <div class="destination-info">
-          <div class="destination-name" title="${dest.fullName}">📍 ${dest.fullName}</div>
-          <div class="destination-sub">${formatDate(dest.latestDate)}</div>
+          <div class="destination-name" title="${dest.fullName}">
+            ${hasGps ? '📍' : '⚠️'} ${dest.fullName}
+          </div>
+          <div class="destination-sub">
+            ${hasGps ? formatDate(dest.latestDate) : '<span style="color:#ff7875;font-weight:500;">Bấm vào để ghim vị trí</span>'}
+          </div>
         </div>
       `;
 
@@ -734,6 +745,21 @@
     });
   }
 
+  const POPULAR_LOCATIONS = [
+    { name: 'Hà Nội', lat: 21.0285, lng: 105.8542 },
+    { name: 'TP. Hồ Chí Minh', lat: 10.7769, lng: 106.7009 },
+    { name: 'Đà Nẵng', lat: 16.0544, lng: 108.2022 },
+    { name: 'Hội An, Quảng Nam', lat: 15.8801, lng: 108.3380 },
+    { name: 'Huế, Thừa Thiên Huế', lat: 16.4637, lng: 107.5909 },
+    { name: 'Nha Trang, Khánh Hòa', lat: 12.2388, lng: 109.1967 },
+    { name: 'Đà Lạt, Lâm Đồng', lat: 11.9404, lng: 108.4583 },
+    { name: 'Phú Quốc, Kiên Giang', lat: 10.2899, lng: 103.9840 },
+    { name: 'Hạ Long, Quảng Ninh', lat: 20.9505, lng: 107.0734 },
+    { name: 'Sa Pa, Lào Cai', lat: 22.3364, lng: 103.8438 },
+    { name: 'Vũng Tàu', lat: 10.3460, lng: 107.0843 },
+    { name: 'Quy Nhơn, Bình Định', lat: 13.7820, lng: 109.2190 }
+  ];
+
   // --- Lightbox Inspector Modal ---
   function openLightbox(item) {
     activePhoto = item;
@@ -744,23 +770,47 @@
       : `<span style="color:var(--warn);font-weight:600;">💻 Vị trí: Đang lưu tạm trên máy (Chưa lên Drive)</span>`;
 
     // Location
-    if (item.location) {
+    if (item.gps && item.gps.lat && item.gps.lng) {
       lightboxLocation.innerHTML = `
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-        <strong>${item.location}</strong>
+        <strong>${item.location || 'Đã có toạ độ GPS'}</strong>
       `;
-      if (item.gps && item.gps.lat && item.gps.lng) {
-        lightboxMapLink.href = `https://www.google.com/maps?q=${item.gps.lat},${item.gps.lng}`;
-        lightboxMapLinkWrapper.hidden = false;
-      } else {
-        lightboxMapLinkWrapper.hidden = true;
-      }
+      lightboxMapLink.href = `https://www.google.com/maps?q=${item.gps.lat},${item.gps.lng}`;
+      lightboxMapLinkWrapper.hidden = false;
     } else {
       lightboxLocation.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="muted"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-        <span class="muted">Không tìm thấy toạ độ GPS trong ảnh</span>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;align-items:center;gap:6px;color:#ff7875;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span style="font-size:12.5px;font-weight:600;">Ảnh chưa có toạ độ GPS (thường do lưu từ Facebook/Zalo)</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted);">📍 Bấm chọn nhanh địa điểm để ghim bức ảnh này lên bản đồ:</div>
+          <div class="loc-chips-grid">
+            ${POPULAR_LOCATIONS.map(l => `<button type="button" class="loc-chip-btn" data-name="${l.name}" data-lat="${l.lat}" data-lng="${l.lng}">📍 ${l.name}</button>`).join('')}
+          </div>
+        </div>
       `;
       lightboxMapLinkWrapper.hidden = true;
+
+      lightboxLocation.querySelectorAll('.loc-chip-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const name = btn.getAttribute('data-name');
+          const lat = parseFloat(btn.getAttribute('data-lat'));
+          const lng = parseFloat(btn.getAttribute('data-lng'));
+          item.gps = { lat, lng };
+          item.location = name + ', Việt Nam';
+          if (!accessToken) savePhotos();
+          updateAllViews();
+          closeLightbox();
+          switchView('map');
+          if (travelMap) {
+            travelMap.flyTo([lat, lng], 13, { duration: 1.2 });
+            const marker = markerMap.get(item.id);
+            if (marker) setTimeout(() => marker.openPopup(), 1200);
+          }
+          showToast(`📍 Đã ghim ảnh "${item.title}" tại ${name}!`);
+        });
+      });
     }
 
     // Camera & settings
