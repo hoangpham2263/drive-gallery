@@ -18,6 +18,12 @@
   let tokenClient = null;
   let driveFolderId = null;
 
+  // View & Map State
+  let travelMap = null;
+  let markersLayer = null;
+  let markerMap = new Map();
+  let currentView = 'map';
+
   // DOM Elements
   const dropzone = document.getElementById('dropzone');
   const fileInput = document.getElementById('fileInput');
@@ -28,6 +34,22 @@
   const sortSelect = document.getElementById('sortSelect');
   const statsLabel = document.getElementById('statsLabel');
   const toast = document.getElementById('toast');
+
+  // View Switcher & Sections
+  const viewMapBtn = document.getElementById('viewMapBtn');
+  const viewGridBtn = document.getElementById('viewGridBtn');
+  const viewTimelineBtn = document.getElementById('viewTimelineBtn');
+  const mapSection = document.getElementById('mapSection');
+  const gallerySection = document.getElementById('gallerySection');
+  const timelineSection = document.getElementById('timelineSection');
+
+  // Map Elements
+  const travelMapEl = document.getElementById('travelMap');
+  const mapPlacesCount = document.getElementById('mapPlacesCount');
+  const resetMapZoomBtn = document.getElementById('resetMapZoomBtn');
+  const citiesVisitedCount = document.getElementById('citiesVisitedCount');
+  const destinationsList = document.getElementById('destinationsList');
+  const timelineContainer = document.getElementById('timelineContainer');
 
   // Badges & Banner
   const openDriveFolderBtn = document.getElementById('openDriveFolderBtn');
@@ -303,6 +325,300 @@
     return `${make} ${model}`.trim() || 'Camera';
   }
 
+  // --- Travel Map (Leaflet & CartoDB Dark Matter) ---
+  function initTravelMap() {
+    if (travelMap || !window.L || !travelMapEl) return;
+    try {
+      travelMap = L.map('travelMap', {
+        center: [16.0, 107.5],
+        zoom: 6,
+        zoomControl: true,
+        scrollWheelZoom: true
+      });
+
+      // CartoDB Dark Matter tile layer
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 19
+      }).addTo(travelMap);
+
+      markersLayer = L.layerGroup().addTo(travelMap);
+
+      if (resetMapZoomBtn) {
+        resetMapZoomBtn.addEventListener('click', fitMapToBounds);
+      }
+    } catch (e) {
+      console.warn('Error initTravelMap', e);
+    }
+  }
+
+  function fitMapToBounds() {
+    if (!travelMap || !markersLayer) return;
+    const bounds = [];
+    markersLayer.eachLayer((marker) => {
+      bounds.push(marker.getLatLng());
+    });
+    if (bounds.length === 1) {
+      travelMap.setView(bounds[0], 13);
+    } else if (bounds.length > 1) {
+      travelMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+    } else {
+      travelMap.setView([16.0, 107.5], 6);
+    }
+  }
+
+  function renderMapMarkers() {
+    if (!travelMap || !markersLayer || !window.L) return;
+    markersLayer.clearLayers();
+    markerMap.clear();
+
+    const gpsPhotos = photos.filter(p => p.gps && typeof p.gps.lat === 'number' && typeof p.gps.lng === 'number');
+
+    if (mapPlacesCount) {
+      mapPlacesCount.textContent = `${gpsPhotos.length} điểm kỷ niệm`;
+    }
+
+    const bounds = [];
+
+    gpsPhotos.forEach((photo) => {
+      // Concentric circles pin marker matching user screenshot
+      const pinIcon = L.divIcon({
+        className: 'map-photo-pin',
+        html: `<div class="pin-ring" title="${photo.title}"><div class="pin-dot"></div></div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+        popupAnchor: [0, -14]
+      });
+
+      const marker = L.marker([photo.gps.lat, photo.gps.lng], { icon: pinIcon });
+
+      const popupHtml = `
+        <div class="map-popup-card">
+          <div class="map-popup-media">
+            <img src="${photo.url}" alt="${photo.title}" loading="lazy" />
+          </div>
+          <div class="map-popup-body">
+            <h4 class="map-popup-title">${photo.title}</h4>
+            <div class="map-popup-meta">
+              <span>📍 ${photo.location || 'Địa điểm chưa đặt tên'}</span>
+              <span>📅 ${formatDate(photo.date)}</span>
+              <span>📷 ${photo.camera || 'Thiết bị chụp'}</span>
+            </div>
+            <button class="map-popup-btn" type="button">Xem ảnh chi tiết</button>
+          </div>
+        </div>
+      `;
+
+      marker.bindPopup(popupHtml, { maxWidth: 260 });
+      marker.on('popupopen', (e) => {
+        const popupEl = e.popup.getElement();
+        if (popupEl) {
+          const detailBtn = popupEl.querySelector('.map-popup-btn');
+          if (detailBtn) {
+            detailBtn.onclick = () => openLightbox(photo);
+          }
+        }
+      });
+
+      marker.addTo(markersLayer);
+      markerMap.set(photo.id, marker);
+      bounds.push([photo.gps.lat, photo.gps.lng]);
+    });
+
+    if (bounds.length > 0) {
+      if (bounds.length === 1) {
+        travelMap.setView(bounds[0], 12);
+      } else {
+        travelMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+      }
+    }
+  }
+
+  // --- Destinations Drawer (Grouped by place like user screenshot) ---
+  function renderDestinationsDrawer() {
+    if (!destinationsList) return;
+    destinationsList.innerHTML = '';
+
+    const destMap = new Map();
+    photos.forEach((p) => {
+      const locKey = p.location ? p.location.split(',')[0].trim() : 'Chưa định vị';
+      if (!destMap.has(locKey)) {
+        destMap.set(locKey, {
+          name: locKey,
+          fullName: p.location || 'Địa điểm kỷ niệm',
+          photos: [],
+          lat: p.gps?.lat,
+          lng: p.gps?.lng,
+          latestDate: p.date
+        });
+      }
+      const group = destMap.get(locKey);
+      group.photos.push(p);
+      if (!group.lat && p.gps?.lat) {
+        group.lat = p.gps.lat;
+        group.lng = p.gps.lng;
+      }
+    });
+
+    const destArray = Array.from(destMap.values());
+
+    if (citiesVisitedCount) {
+      citiesVisitedCount.textContent = destArray.length;
+    }
+
+    if (destArray.length === 0) {
+      destinationsList.innerHTML = `<div class="muted small" style="grid-column: 1/-1; padding: 14px 0;">Chưa có điểm đến nào. Hãy tải ảnh có GPS vào để tạo điểm đến kỷ niệm!</div>`;
+      return;
+    }
+
+    destArray.forEach((dest) => {
+      const coverPhoto = dest.photos[0];
+      const card = document.createElement('div');
+      card.className = 'destination-card';
+      card.innerHTML = `
+        <div class="destination-thumb">
+          <img src="${coverPhoto.url}" alt="${dest.name}" loading="lazy" />
+          <span class="places-badge">${dest.photos.length} kỷ niệm</span>
+        </div>
+        <div class="destination-info">
+          <div class="destination-name" title="${dest.fullName}">📍 ${dest.fullName}</div>
+          <div class="destination-sub">${formatDate(dest.latestDate)}</div>
+        </div>
+      `;
+
+      card.addEventListener('click', () => {
+        if (dest.lat && dest.lng && travelMap) {
+          switchView('map');
+          travelMap.flyTo([dest.lat, dest.lng], 13, { duration: 1.2 });
+          const marker = markerMap.get(coverPhoto.id);
+          if (marker) {
+            setTimeout(() => marker.openPopup(), 1200);
+          }
+        } else {
+          openLightbox(coverPhoto);
+        }
+      });
+
+      destinationsList.appendChild(card);
+    });
+  }
+
+  // --- Timeline View ---
+  function renderTimeline() {
+    if (!timelineContainer) return;
+    timelineContainer.innerHTML = '';
+
+    if (photos.length === 0) {
+      timelineContainer.innerHTML = '<div class="muted small">Chưa có ảnh kỷ niệm nào trong dòng thời gian.</div>';
+      return;
+    }
+
+    const sorted = [...photos].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+    const groups = new Map();
+    sorted.forEach((p) => {
+      let groupKey = 'Kho ảnh kỷ niệm';
+      if (p.date) {
+        const d = new Date(p.date);
+        groupKey = `Tháng ${d.getMonth() + 1}, ${d.getFullYear()}`;
+      }
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, []);
+      }
+      groups.get(groupKey).push(p);
+    });
+
+    groups.forEach((items, monthStr) => {
+      const groupEl = document.createElement('div');
+      groupEl.className = 'timeline-group';
+
+      let itemsHtml = '';
+      items.forEach((item) => {
+        itemsHtml += `
+          <div class="photo-card" style="margin-bottom:0;">
+            <div class="card-media" style="height:140px;cursor:pointer;" data-id="${item.id}">
+              <img src="${item.url}" alt="${item.title}" loading="lazy" />
+              ${item.location ? `<span class="location-badge">${item.location}</span>` : ''}
+            </div>
+            <div class="card-body" style="padding:10px 12px;">
+              <h4 class="card-title">${item.title}</h4>
+              <div class="card-meta">
+                <span>${formatDate(item.date)}</span>
+                <span>•</span>
+                <span>${item.camera || 'Camera'}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      groupEl.innerHTML = `
+        <div class="timeline-dot"></div>
+        <div class="timeline-group-header">
+          <span>📅 ${monthStr}</span>
+          <span class="muted small">(${items.length} bức ảnh)</span>
+        </div>
+        <div class="timeline-items-grid">
+          ${itemsHtml}
+        </div>
+      `;
+
+      groupEl.querySelectorAll('.card-media').forEach((mediaEl) => {
+        mediaEl.addEventListener('click', () => {
+          const id = mediaEl.getAttribute('data-id');
+          const p = photos.find(x => x.id === id);
+          if (p) openLightbox(p);
+        });
+      });
+
+      timelineContainer.appendChild(groupEl);
+    });
+  }
+
+  // --- View Switcher ---
+  function switchView(viewName) {
+    currentView = viewName;
+    if (viewMapBtn) {
+      viewMapBtn.classList.toggle('active', viewName === 'map');
+      viewMapBtn.setAttribute('aria-selected', viewName === 'map');
+    }
+    if (viewGridBtn) {
+      viewGridBtn.classList.toggle('active', viewName === 'grid');
+      viewGridBtn.setAttribute('aria-selected', viewName === 'grid');
+    }
+    if (viewTimelineBtn) {
+      viewTimelineBtn.classList.toggle('active', viewName === 'timeline');
+      viewTimelineBtn.setAttribute('aria-selected', viewName === 'timeline');
+    }
+
+    if (mapSection) mapSection.hidden = (viewName !== 'map');
+    if (gallerySection) gallerySection.hidden = (viewName !== 'grid');
+    if (timelineSection) timelineSection.hidden = (viewName !== 'timeline');
+
+    if (viewName === 'map') {
+      if (!travelMap) {
+        initTravelMap();
+      }
+      setTimeout(() => {
+        if (travelMap) travelMap.invalidateSize();
+      }, 150);
+    } else if (viewName === 'timeline') {
+      renderTimeline();
+    } else if (viewName === 'grid') {
+      renderGallery();
+    }
+  }
+
+  function updateAllViews() {
+    renderGallery();
+    renderMapMarkers();
+    renderDestinationsDrawer();
+    if (currentView === 'timeline') {
+      renderTimeline();
+    }
+  }
+
   // --- Render Gallery Grid ---
   function renderGallery() {
     if (!galleryGrid) return;
@@ -572,8 +888,14 @@
       }
 
       photos.unshift(uploadedItem);
-      savePhotos();
-      renderGallery();
+      if (!accessToken) savePhotos();
+      updateAllViews();
+
+      if (uploadedItem.gps && uploadedItem.gps.lat && travelMap) {
+        if (currentView === 'map') {
+          travelMap.flyTo([uploadedItem.gps.lat, uploadedItem.gps.lng], 13, { duration: 1.2 });
+        }
+      }
 
       // Complete queue item
       statusEl.textContent = '✓ Hoàn thành';
@@ -851,11 +1173,11 @@
 
         // Show only real Google Drive photos when connected
         photos = drivePhotos;
-        renderGallery();
+        updateAllViews();
       } else {
         // Folder exists on Drive but is empty
         photos = [];
-        renderGallery();
+        updateAllViews();
       }
     } catch (err) {
       console.warn('Sync drive photos failed', err);
@@ -898,7 +1220,7 @@
             saveConfig(config);
 
             photos = [];
-            renderGallery();
+            updateAllViews();
             setConnectedState(true);
             showToast('✅ Đã kết nối Google Drive! Đang chuẩn bị thư mục DriveGallery...');
 
@@ -1004,20 +1326,31 @@
       }
     });
 
+    // View Switcher Buttons
+    if (viewMapBtn) {
+      viewMapBtn.addEventListener('click', () => switchView('map'));
+    }
+    if (viewGridBtn) {
+      viewGridBtn.addEventListener('click', () => switchView('grid'));
+    }
+    if (viewTimelineBtn) {
+      viewTimelineBtn.addEventListener('click', () => switchView('timeline'));
+    }
+
     // Search & Filter
     searchInput.addEventListener('input', (e) => {
       searchQuery = e.target.value.trim();
-      renderGallery();
+      updateAllViews();
     });
 
     folderSelect.addEventListener('change', (e) => {
       currentFilter = e.target.value;
-      renderGallery();
+      updateAllViews();
     });
 
     sortSelect.addEventListener('change', (e) => {
       sortBy = e.target.value;
-      renderGallery();
+      updateAllViews();
     });
 
     // Lightbox
@@ -1050,7 +1383,7 @@
       if (confirm(`Bạn có chắc muốn xóa ảnh "${activePhoto.title}" không?`)) {
         photos = photos.filter((p) => p.id !== activePhoto.id);
         savePhotos();
-        renderGallery();
+        updateAllViews();
         closeLightbox();
         showToast('Đã xóa ảnh khỏi danh sách.');
       }
@@ -1092,7 +1425,7 @@
       if (confirm('Khôi phục danh sách ảnh mẫu Demo ban đầu?')) {
         photos = [...DEMO_PHOTOS];
         savePhotos();
-        renderGallery();
+        updateAllViews();
         configModal.classList.remove('open');
         showToast('Đã khôi phục dữ liệu Demo thành công');
       }
@@ -1109,7 +1442,7 @@
         saveConfig(cfg);
         setConnectedState(false);
         photos = [...DEMO_PHOTOS];
-        renderGallery();
+        updateAllViews();
         configModal.classList.remove('open');
         showToast('Đã đăng xuất Google Drive, quay về chế độ Demo');
       });
@@ -1123,8 +1456,10 @@
       loadPhotos();
       setConnectedState(false);
     }
-    renderGallery();
+    initTravelMap();
+    updateAllViews();
     setupEvents();
+    switchView('map');
 
     // Check Google Auth library
     const checkGisInterval = setInterval(() => {

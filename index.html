@@ -3,12 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Drive Gallery – Quản lý ảnh Google Drive & Trích xuất vị trí, EXIF</title>
-    <meta name="description" content="Lưu trữ và quản lý ảnh trên Google Drive. Tự động đọc thông số máy ảnh & vị trí chụp (GPS / Địa danh thực tế), tạo link nhúng nhanh." />
+    <title>Hoang's Memories – Bản đồ Hành trình &amp; Kho Kỷ niệm</title>
+    <meta name="description" content="Bản đồ hành trình &amp; kho lưu trữ kỷ niệm du lịch qua ảnh của Hoàng Phạm. Tự động ghim toạ độ GPS, nhóm theo điểm đến và ngày tháng, đồng bộ Google Drive." />
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="brand/apple-touch-icon.png" />
-    <link rel="stylesheet" href="style.css?v=20261020_04" />
+    <link rel="stylesheet" href="style.css?v=20261020_05" />
+    <!-- Leaflet CSS for Travel Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <!-- Leaflet JS for Travel Map -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <!-- EXIF & GPS Parser Library (Local) -->
     <script src="vendor/exifr.full.umd.js"></script>
     <!-- Google Identity Services -->
@@ -22,8 +26,8 @@
           <img src="brand/hp-icon.svg" alt="HoangPham" width="40" height="40" />
         </a>
         <div class="top-text">
-          <h1>Drive Gallery</h1>
-          <p class="muted">Kho ảnh Google Drive · Đọc thông số máy &amp; địa điểm (GPS) · Tạo link nhúng nhanh.</p>
+          <h1>Hoang's Memories</h1>
+          <p class="muted">Nhật ký Hành trình &amp; Bản đồ Kỷ niệm · Tự động ghim toạ độ GPS · Đồng bộ Google Drive</p>
         </div>
         <div class="top-actions">
           <a class="ghost back" href="https://hoangpham.is-a.dev/tools">← Portfolio</a>
@@ -53,7 +57,7 @@
       <!-- Banner note -->
       <div id="demoBanner" class="banner">
         <div>
-          <strong>Chế độ Xem thử (Demo):</strong> Bạn có thể kéo thả ảnh vào để trải nghiệm ngay tính năng tự động trích xuất EXIF, đọc toạ độ GPS và biến toạ độ thành tên địa danh thực tế.
+          <strong>Chế độ Xem thử (Demo):</strong> Kéo thả ảnh kỷ niệm của bạn vào để tự động ghim vị trí lên bản đồ và trích xuất EXIF.
         </div>
         <button id="connectDrivePromptBtn" class="btn btn-primary btn-sm" type="button">Kết nối Google Drive của bạn</button>
       </div>
@@ -69,12 +73,13 @@
             <path d="M19 2v6"/>
             <path d="M22 5h-6"/>
           </svg>
-          <span class="drop-title">Kéo thả ảnh vào đây hoặc bấm để chọn</span>
-          <span class="muted small">Hỗ trợ JPG, PNG, WEBP, AVIF, HEIC từ điện thoại • Chọn nhiều file cùng lúc</span>
+          <span class="drop-title">Kéo thả ảnh kỷ niệm vào đây hoặc bấm để chọn</span>
+          <span class="muted small">Tự động đọc GPS, ghim lên Bản đồ Hành trình • Hỗ trợ JPG, PNG, WEBP, AVIF, HEIC</span>
           <div class="drop-badges">
-            <span class="chip">📍 Trích xuất GPS &amp; Địa danh</span>
-            <span class="chip">📷 Đọc thông số máy ảnh</span>
-            <span class="chip">🔗 Tạo link nhúng Markdown / HTML</span>
+            <span class="chip">📍 Ghim lên Bản đồ Hành trình</span>
+            <span class="chip">🇻🇳 Đọc địa danh tự động</span>
+            <span class="chip">📷 EXIF máy ảnh</span>
+            <span class="chip">☁️ Tải lên Google Drive</span>
           </div>
         </button>
         <input id="fileInput" type="file" accept="image/*,.heic,.heif" multiple hidden />
@@ -83,37 +88,98 @@
         <div id="uploadQueue" class="upload-queue" hidden></div>
       </section>
 
-      <!-- Toolbar -->
-      <section class="toolbar">
-        <div class="toolbar-left">
-          <div class="search-box">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="muted"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-            <input id="searchInput" type="text" placeholder="Tìm theo tên ảnh, địa điểm, máy ảnh..." />
-          </div>
-
-          <select id="folderSelect" class="select-input">
-            <option value="all">📁 Tất cả thư mục</option>
-            <option value="travel">✈️ Du lịch &amp; Khám phá</option>
-            <option value="work">💼 Công việc &amp; Dự án</option>
-            <option value="daily">☕ Đời sống thường ngày</option>
-          </select>
+      <!-- View Switcher Tabs -->
+      <div class="view-switcher-bar">
+        <div class="view-tabs" role="tablist">
+          <button id="viewMapBtn" class="tab-btn active" type="button" role="tab" aria-selected="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" x2="9" y1="3" y2="18"/><line x1="15" x2="15" y1="6" y2="21"/></svg>
+            Bản đồ hành trình
+          </button>
+          <button id="viewGridBtn" class="tab-btn" type="button" role="tab" aria-selected="false">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+            Lưới ảnh kỷ niệm
+          </button>
+          <button id="viewTimelineBtn" class="tab-btn" type="button" role="tab" aria-selected="false">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Dòng thời gian
+          </button>
         </div>
 
-        <div class="toolbar-right">
-          <select id="sortSelect" class="select-input">
-            <option value="date-desc">Mới nhất trước</option>
-            <option value="date-asc">Cũ nhất trước</option>
-            <option value="name-asc">Tên (A-Z)</option>
-            <option value="size-desc">Dung lượng lớn nhất</option>
-          </select>
+        <div class="search-box mini-search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="muted"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input id="searchInput" type="text" placeholder="Tìm kỷ niệm, điểm đến, máy ảnh..." />
+        </div>
+      </div>
 
-          <span id="statsLabel" class="muted small">Đang tải...</span>
+      <!-- Map View Section -->
+      <section id="mapSection" class="map-section">
+        <div class="map-wrapper">
+          <div id="travelMap" class="travel-map"></div>
+          
+          <div class="map-overlay-header">
+            <span class="map-overlay-title">Bản đồ Hành trình Việt Nam</span>
+            <span id="mapPlacesCount" class="map-overlay-badge">0 điểm đến</span>
+          </div>
+
+          <button id="resetMapZoomBtn" class="map-reset-btn" type="button" title="Xem toàn cảnh bản đồ">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+            Toàn cảnh
+          </button>
+        </div>
+
+        <!-- Destinations drawer matching screenshot (89 cities visited / places cards) -->
+        <div class="destinations-drawer">
+          <div class="drawer-header">
+            <div class="drawer-title">
+              <span id="citiesVisitedCount" class="highlight-count">0</span> điểm đến đã ghé thăm
+            </div>
+            <div class="drawer-sub muted small">
+              Bấm vào từng điểm đến để xem chi tiết ảnh chụp tại đó
+            </div>
+          </div>
+          <div id="destinationsList" class="destinations-list">
+            <!-- Destination cards rendered by app.js -->
+          </div>
         </div>
       </section>
 
-      <!-- Photo Gallery Grid -->
-      <section id="galleryGrid" class="gallery">
-        <!-- Rendered by app.js -->
+      <!-- Photo Gallery Grid (Alternative View) -->
+      <section id="gallerySection" class="gallery-section" hidden>
+        <div class="toolbar" style="margin-bottom: 14px;">
+          <div class="toolbar-left">
+            <select id="folderSelect" class="select-input">
+              <option value="all">📁 Tất cả thư mục</option>
+              <option value="travel">✈️ Du lịch &amp; Khám phá</option>
+              <option value="work">💼 Công việc &amp; Dự án</option>
+              <option value="daily">☕ Đời sống thường ngày</option>
+            </select>
+          </div>
+
+          <div class="toolbar-right">
+            <select id="sortSelect" class="select-input">
+              <option value="date-desc">Mới nhất trước</option>
+              <option value="date-asc">Cũ nhất trước</option>
+              <option value="name-asc">Tên (A-Z)</option>
+              <option value="size-desc">Dung lượng lớn nhất</option>
+            </select>
+            <span id="statsLabel" class="muted small">Đang tải...</span>
+          </div>
+        </div>
+
+        <div id="galleryGrid" class="gallery">
+          <!-- Rendered by app.js -->
+        </div>
+      </section>
+
+      <!-- Timeline View Section -->
+      <section id="timelineSection" class="timeline-section" hidden>
+        <div class="timeline-header">
+          <h3>Dòng thời gian các chuyến đi</h3>
+          <p class="muted small">Sắp xếp các bức ảnh theo từng mốc thời gian và điểm đến</p>
+        </div>
+        <div id="timelineContainer" class="timeline-container">
+          <!-- Rendered by app.js -->
+        </div>
       </section>
 
       <!-- How it works guide -->
@@ -262,6 +328,6 @@
     <!-- Toast Notification -->
     <div id="toast" class="toast">Đã sao chép vào bộ nhớ tạm!</div>
 
-    <script src="app.js?v=20261020_04"></script>
+    <script src="app.js?v=20261020_05"></script>
   </body>
 </html>
