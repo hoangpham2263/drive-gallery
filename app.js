@@ -57,6 +57,22 @@
   const destinationsList = document.getElementById('destinationsList');
   const timelineContainer = document.getElementById('timelineContainer');
 
+  // Location Picker & Map Pinning Elements
+  const mapPinningBar = document.getElementById('mapPinningBar');
+  const mapPinningTitle = document.getElementById('mapPinningTitle');
+  const cancelMapPinningBtn = document.getElementById('cancelMapPinningBtn');
+  const locationPickerModal = document.getElementById('locationPickerModal');
+  const closeLocPickerBtn = document.getElementById('closeLocPickerBtn');
+  const locPickerPhotoTitle = document.getElementById('locPickerPhotoTitle');
+  const locSearchInput = document.getElementById('locSearchInput');
+  const locSearchResults = document.getElementById('locSearchResults');
+  const locPickOnMapBtn = document.getElementById('locPickOnMapBtn');
+  const locPopularList = document.getElementById('locPopularList');
+
+  let activePickerPhoto = null;
+  let isMapPinningMode = false;
+  let searchDebounceTimer = null;
+
   // Badges & Actions
   const globalDropOverlay = document.getElementById('globalDropOverlay');
   const openDriveFolderBtn = document.getElementById('openDriveFolderBtn');
@@ -201,18 +217,21 @@
   // Popular Vietnam destinations for 1-click GPS assignment
   const POPULAR_LOCATIONS = [
     { name: 'Hà Nội', fullName: 'Hoàn Kiếm, Hà Nội, Việt Nam', lat: 21.0285, lng: 105.8542 },
-    { name: 'Đà Nẵng', fullName: 'Hải Châu, Đà Nẵng, Việt Nam', lat: 16.0612, lng: 108.2272 },
-    { name: 'TP. Hồ Chí Minh', fullName: 'Quận 1, TP. Hồ Chí Minh, Việt Nam', lat: 10.7743, lng: 106.7029 },
-    { name: 'Đà Lạt', fullName: 'Đà Lạt, Lâm Đồng, Việt Nam', lat: 11.9404, lng: 108.4583 },
-    { name: 'Phú Quốc', fullName: 'An Thới, Phú Quốc, Kiên Giang, Việt Nam', lat: 10.0538, lng: 104.0326 },
-    { name: 'Hội An', fullName: 'Hội An, Quảng Nam, Việt Nam', lat: 15.8801, lng: 108.3380 },
-    { name: 'Nha Trang', fullName: 'Nha Trang, Khánh Hòa, Việt Nam', lat: 12.2388, lng: 109.1967 },
+    { name: 'Hạ Long', fullName: 'Hạ Long, Quảng Ninh, Việt Nam', lat: 20.9599, lng: 107.0425 },
     { name: 'Sa Pa', fullName: 'Sa Pa, Lào Cai, Việt Nam', lat: 22.3364, lng: 103.8438 },
-    { name: 'Huế', fullName: 'Huế, Thừa Thiên Huế, Việt Nam', lat: 16.4637, lng: 107.5909 },
-    { name: 'Hải Phòng', fullName: 'Hải Phòng, Việt Nam', lat: 20.8449, lng: 106.6881 },
-    { name: 'Cần Thơ', fullName: 'Ninh Kiều, Cần Thơ, Việt Nam', lat: 10.0452, lng: 105.7469 },
+    { name: 'Hà Giang', fullName: 'Đồng Văn, Hà Giang, Việt Nam', lat: 23.2789, lng: 105.3625 },
+    { name: 'Ninh Bình', fullName: 'Tràng An, Ninh Bình, Việt Nam', lat: 20.2506, lng: 105.9744 },
+    { name: 'Đà Nẵng', fullName: 'Hải Châu, Đà Nẵng, Việt Nam', lat: 16.0612, lng: 108.2272 },
+    { name: 'Hội An', fullName: 'Hội An, Quảng Nam, Việt Nam', lat: 15.8801, lng: 108.3380 },
+    { name: 'Huế', fullName: 'Kinh thành Huế, Thừa Thiên Huế, Việt Nam', lat: 16.4637, lng: 107.5909 },
     { name: 'Quy Nhơn', fullName: 'Quy Nhơn, Bình Định, Việt Nam', lat: 13.7820, lng: 109.2197 },
-    { name: 'Vũng Tàu', fullName: 'Vũng Tàu, Bà Rịa - Vũng Tàu, Việt Nam', lat: 10.3460, lng: 107.0843 }
+    { name: 'Nha Trang', fullName: 'Nha Trang, Khánh Hòa, Việt Nam', lat: 12.2388, lng: 109.1967 },
+    { name: 'Đà Lạt', fullName: 'Đà Lạt, Lâm Đồng, Việt Nam', lat: 11.9404, lng: 108.4583 },
+    { name: 'Phan Thiết / Mũi Né', fullName: 'Mũi Né, Phan Thiết, Bình Thuận, Việt Nam', lat: 10.9333, lng: 108.2833 },
+    { name: 'TP. Hồ Chí Minh', fullName: 'Quận 1, TP. Hồ Chí Minh, Việt Nam', lat: 10.7743, lng: 106.7029 },
+    { name: 'Vũng Tàu', fullName: 'Vũng Tàu, Bà Rịa - Vũng Tàu, Việt Nam', lat: 10.3460, lng: 107.0843 },
+    { name: 'Cần Thơ', fullName: 'Ninh Kiều, Cần Thơ, Việt Nam', lat: 10.0452, lng: 105.7469 },
+    { name: 'Phú Quốc', fullName: 'An Thới, Phú Quốc, Kiên Giang, Việt Nam', lat: 10.0538, lng: 104.0326 }
   ];
 
   // --- Helper Functions ---
@@ -451,6 +470,9 @@
         resetMapZoomBtn.addEventListener('click', fitMapToBounds);
       }
 
+      // Map click handler for interactive location pinning
+      travelMap.on('click', onMapClick);
+
       switchMapScope(currentMapScope);
     } catch (e) {
       console.warn('Error initTravelMap', e);
@@ -467,8 +489,11 @@
     if (scopeGlobalBtn) scopeGlobalBtn.classList.toggle('active', scope === 'global');
 
     if (mapPlacesCount) {
-      const gpsPhotos = photos.filter(p => p.gps && typeof p.gps.lat === 'number' && typeof p.gps.lng === 'number');
-      const vnPhotos = gpsPhotos.filter(p => isLocationInVietnam(p.gps.lat, p.gps.lng));
+      const gpsPhotos = photos.filter(p => getPhotoLatLng(p) !== null);
+      const vnPhotos = gpsPhotos.filter(p => {
+        const c = getPhotoLatLng(p);
+        return isLocationInVietnam(c.lat, c.lng);
+      });
       if (scope === 'vietnam') {
         mapPlacesCount.textContent = `${vnPhotos.length} điểm tại VN`;
       } else {
@@ -554,13 +579,50 @@
     }
   }
 
+  function getPhotoLatLng(p) {
+    if (!p || !p.gps) return null;
+    const rawLat = p.gps.lat !== undefined ? p.gps.lat : p.gps.latitude;
+    const rawLng = p.gps.lng !== undefined ? p.gps.lng : p.gps.longitude;
+    const lat = typeof rawLat === 'number' ? rawLat : parseFloat(rawLat);
+    const lng = typeof rawLng === 'number' ? rawLng : parseFloat(rawLng);
+    if (isNaN(lat) || isNaN(lng)) return null;
+    return { lat, lng };
+  }
+
+  function clusterGpsPhotos(gpsPhotos) {
+    const clusters = [];
+    gpsPhotos.forEach((photo) => {
+      const coords = getPhotoLatLng(photo);
+      if (!coords) return;
+      let found = clusters.find(c => {
+        const dLat = Math.abs(c.lat - coords.lat);
+        const dLng = Math.abs(c.lng - coords.lng);
+        return (dLat < 0.008 && dLng < 0.008);
+      });
+      if (found) {
+        found.photos.push(photo);
+      } else {
+        clusters.push({
+          lat: coords.lat,
+          lng: coords.lng,
+          name: photo.location || 'Địa điểm kỷ niệm',
+          photos: [photo]
+        });
+      }
+    });
+    return clusters;
+  }
+
   function renderMapMarkers() {
     if (!travelMap || !markersLayer || !window.L) return;
     markersLayer.clearLayers();
     markerMap.clear();
 
-    const gpsPhotos = photos.filter(p => p.gps && typeof p.gps.lat === 'number' && typeof p.gps.lng === 'number');
-    const vnPhotos = gpsPhotos.filter(p => isLocationInVietnam(p.gps.lat, p.gps.lng));
+    const gpsPhotos = photos.filter(p => getPhotoLatLng(p) !== null);
+    const vnPhotos = gpsPhotos.filter(p => {
+      const c = getPhotoLatLng(p);
+      return isLocationInVietnam(c.lat, c.lng);
+    });
 
     if (mapPlacesCount) {
       if (currentMapScope === 'vietnam') {
@@ -570,69 +632,136 @@
       }
     }
 
-    gpsPhotos.forEach((photo) => {
-      // Concentric glowing radar pin marker matching user reference screenshot
+    const clusters = clusterGpsPhotos(gpsPhotos);
+
+    clusters.forEach((cluster) => {
+      const isMulti = cluster.photos.length > 1;
+      const firstPhoto = cluster.photos[0];
+
       const pinIcon = L.divIcon({
         className: 'map-photo-pin',
         html: `
-          <div class="pin-wrapper" title="${photo.title} (${photo.location || ''})">
+          <div class="pin-wrapper" title="${cluster.name} (${cluster.photos.length} ảnh)">
             <div class="pin-pulse"></div>
             <div class="pin-ring">
               <div class="pin-dot"></div>
+              ${isMulti ? `<span class="pin-count-badge">${cluster.photos.length}</span>` : ''}
             </div>
           </div>
         `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-        popupAnchor: [0, -16]
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+        popupAnchor: [0, -17]
       });
 
-      const marker = L.marker([photo.gps.lat, photo.gps.lng], { icon: pinIcon });
+      const marker = L.marker([cluster.lat, cluster.lng], { icon: pinIcon });
 
-      const popupHtml = `
-        <div class="map-popup-card">
-          <div class="map-popup-media">
-            <img src="${photo.url}" alt="${photo.title}" loading="lazy" />
-          </div>
-          <div class="map-popup-body">
-            <h4 class="map-popup-title">${photo.title}</h4>
-            <div class="map-popup-meta">
-              <span>📍 ${photo.location || 'Địa điểm chưa đặt tên'}</span>
-              <span>📅 ${formatDate(photo.date)}</span>
-              <span>📷 ${photo.camera || 'Thiết bị chụp'}</span>
+      let popupHtml = '';
+      if (!isMulti) {
+        popupHtml = `
+          <div class="map-popup-card">
+            <div class="map-popup-media">
+              <img src="${firstPhoto.url}" alt="${firstPhoto.title}" loading="lazy" />
             </div>
-            <button class="map-popup-btn" type="button">Xem ảnh chi tiết</button>
+            <div class="map-popup-body">
+              <h4 class="map-popup-title">${firstPhoto.title}</h4>
+              <div class="map-popup-meta">
+                <span>📍 ${firstPhoto.location || 'Địa điểm chưa đặt tên'}</span>
+                <span>📅 ${formatDate(firstPhoto.date)}</span>
+                <span>📷 ${firstPhoto.camera || 'Thiết bị chụp'}</span>
+              </div>
+              <div style="display:flex;gap:6px;margin-top:6px;">
+                <button class="map-popup-btn map-view-detail-btn" type="button" style="flex:1;">Xem ảnh chi tiết</button>
+                <button class="map-popup-btn map-change-loc-btn" type="button" style="width:auto;padding:5px 8px;" title="Đổi vị trí ghim">📍</button>
+              </div>
+            </div>
           </div>
-        </div>
-      `;
+        `;
+      } else {
+        popupHtml = `
+          <div class="cluster-popup-card">
+            <div class="cluster-popup-header">
+              <span>📍 ${cluster.name}</span>
+              <span class="muted small" style="margin-left:auto;">${cluster.photos.length} ảnh</span>
+            </div>
+            <div class="cluster-popup-list">
+              ${cluster.photos.map(p => `
+                <div class="cluster-popup-item" data-photo-id="${p.id}">
+                  <img src="${p.url}" alt="${p.title}" class="cluster-popup-thumb" loading="lazy" />
+                  <div class="cluster-popup-info">
+                    <span class="cluster-popup-title">${p.title}</span>
+                    <span class="cluster-popup-sub">${formatDate(p.date)}</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
 
-      marker.bindPopup(popupHtml, { maxWidth: 260 });
+      marker.bindPopup(popupHtml, { maxWidth: 280 });
       marker.on('popupopen', (e) => {
         const popupEl = e.popup.getElement();
-        if (popupEl) {
-          const detailBtn = popupEl.querySelector('.map-popup-btn');
-          if (detailBtn) {
-            detailBtn.onclick = () => openLightbox(photo);
-          }
+        if (!popupEl) return;
+
+        if (!isMulti) {
+          const detailBtn = popupEl.querySelector('.map-view-detail-btn');
+          if (detailBtn) detailBtn.onclick = () => openLightbox(firstPhoto);
+          const changeLocBtn = popupEl.querySelector('.map-change-loc-btn');
+          if (changeLocBtn) changeLocBtn.onclick = () => openLocationPicker(firstPhoto);
+        } else {
+          popupEl.querySelectorAll('.cluster-popup-item').forEach((itemEl) => {
+            itemEl.onclick = () => {
+              const pId = itemEl.getAttribute('data-photo-id');
+              const selectedPhoto = cluster.photos.find(p => p.id === pId);
+              if (selectedPhoto) openLightbox(selectedPhoto);
+            };
+          });
         }
       });
 
       marker.addTo(markersLayer);
-      markerMap.set(photo.id, marker);
+      cluster.photos.forEach(p => markerMap.set(p.id, marker));
     });
 
     fitMapToBounds();
   }
 
   // --- Location Assignment Helper ---
-  function assignLocationToPhoto(photoId, loc) {
+  async function assignLocationToPhoto(photoId, loc) {
     const photo = photos.find(p => p.id === photoId);
     if (!photo) return;
     photo.gps = { lat: loc.lat, lng: loc.lng };
-    photo.location = loc.fullName;
+    photo.location = loc.fullName || loc.name;
     if (!accessToken) savePhotos();
+
+    // If connected to Google Drive, patch file description
+    if (accessToken && !photo.id.startsWith('local-') && !photo.id.startsWith('demo-')) {
+      try {
+        fetch(`https://www.googleapis.com/drive/v3/files/${photo.id}`, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            description: JSON.stringify({
+              location: photo.location,
+              gps: photo.gps,
+              camera: photo.camera,
+              settings: photo.settings,
+              width: photo.width,
+              height: photo.height
+            })
+          })
+        }).catch(err => console.warn('Patch drive metadata error', err));
+      } catch (e) {
+        console.warn('Drive patch error', e);
+      }
+    }
+
     updateAllViews();
-    showToast(`📍 Đã ghim ảnh vào "${loc.name}"!`);
+    showToast(`📍 Đã ghim ảnh vào "${loc.name || loc.fullName}"!`);
     if (travelMap) {
       switchView('map');
       flyToMapLocation(loc.lat, loc.lng, 13);
@@ -643,6 +772,157 @@
     }
   }
 
+  // --- Location Picker & Map Pinning Functions ---
+  function openLocationPicker(photo) {
+    activePickerPhoto = photo;
+    if (locPickerPhotoTitle) {
+      locPickerPhotoTitle.textContent = photo ? `Ảnh: ${photo.title}` : 'Chọn vị trí ghim';
+    }
+    if (locSearchInput) {
+      locSearchInput.value = '';
+    }
+    if (locSearchResults) {
+      locSearchResults.hidden = true;
+      locSearchResults.innerHTML = '';
+    }
+    renderPopularLocations();
+    if (locationPickerModal) {
+      locationPickerModal.hidden = false;
+    }
+  }
+
+  function closeLocationPicker() {
+    if (locationPickerModal) {
+      locationPickerModal.hidden = true;
+    }
+  }
+
+  function renderPopularLocations() {
+    if (!locPopularList) return;
+    locPopularList.innerHTML = '';
+    POPULAR_LOCATIONS.forEach((loc) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'loc-chip-btn';
+      chip.innerHTML = `📍 ${loc.name}`;
+      chip.title = loc.fullName;
+      chip.addEventListener('click', () => {
+        if (activePickerPhoto) {
+          assignLocationToPhoto(activePickerPhoto.id, loc);
+          closeLocationPicker();
+        }
+      });
+      locPopularList.appendChild(chip);
+    });
+  }
+
+  function onSearchInput(query) {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+      searchLocation(query);
+    }, 320);
+  }
+
+  async function searchLocation(query) {
+    if (!locSearchResults) return;
+    const q = (query || '').trim();
+    if (q.length < 2) {
+      locSearchResults.hidden = true;
+      locSearchResults.innerHTML = '';
+      return;
+    }
+
+    locSearchResults.hidden = false;
+    locSearchResults.innerHTML = `<div class="loc-result-item" style="color:var(--muted);">🔍 Đang tìm kiếm "${q}"...</div>`;
+
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&addressdetails=1`;
+      const res = await fetch(url, {
+        headers: { 'Accept-Language': 'vi,en;q=0.9' }
+      });
+      if (!res.ok) throw new Error('Không thể tìm kiếm');
+      const data = await res.json();
+
+      if (!data || data.length === 0) {
+        locSearchResults.innerHTML = `<div class="loc-result-item" style="color:var(--muted);">Không tìm thấy địa điểm nào khớp với "${q}"</div>`;
+        return;
+      }
+
+      locSearchResults.innerHTML = '';
+      data.forEach((item) => {
+        const itemEl = document.createElement('div');
+        itemEl.className = 'loc-result-item';
+        const parts = item.display_name.split(',');
+        const shortName = parts[0].trim();
+        itemEl.innerHTML = `
+          <span>📍</span>
+          <div>
+            <strong>${shortName}</strong>
+            <div style="font-size:11px;color:var(--muted);">${parts.slice(1, 4).join(', ')}</div>
+          </div>
+        `;
+        itemEl.addEventListener('click', () => {
+          if (activePickerPhoto) {
+            assignLocationToPhoto(activePickerPhoto.id, {
+              name: shortName,
+              fullName: item.display_name,
+              lat: parseFloat(item.lat),
+              lng: parseFloat(item.lon)
+            });
+            closeLocationPicker();
+          }
+        });
+        locSearchResults.appendChild(itemEl);
+      });
+    } catch (e) {
+      locSearchResults.innerHTML = `<div class="loc-result-item" style="color:var(--muted);">Lỗi tìm kiếm: ${e.message}</div>`;
+    }
+  }
+
+  function startMapPinning() {
+    if (!activePickerPhoto) return;
+    closeLocationPicker();
+    switchView('map');
+    isMapPinningMode = true;
+    if (mapPinningTitle) mapPinningTitle.textContent = `"${activePickerPhoto.title}"`;
+    if (mapPinningBar) mapPinningBar.hidden = false;
+    if (travelMapEl) travelMapEl.classList.add('map-crosshair');
+    showToast('📍 Click vào bất kỳ vị trí nào trên bản đồ để ghim ảnh!');
+  }
+
+  function cancelMapPinning() {
+    isMapPinningMode = false;
+    if (mapPinningBar) mapPinningBar.hidden = true;
+    if (travelMapEl) travelMapEl.classList.remove('map-crosshair');
+  }
+
+  function onMapClick(e) {
+    if (!isMapPinningMode || !activePickerPhoto) return;
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
+    const targetPhoto = activePickerPhoto;
+    cancelMapPinning();
+
+    showToast(`📍 Đang ghim ảnh tại ${lat.toFixed(4)}°, ${lng.toFixed(4)}°...`);
+
+    reverseGeocode(lat, lng).then((addr) => {
+      const locName = addr || `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`;
+      assignLocationToPhoto(targetPhoto.id, {
+        name: locName.split(',')[0].trim(),
+        fullName: locName,
+        lat: lat,
+        lng: lng
+      });
+    }).catch(() => {
+      assignLocationToPhoto(targetPhoto.id, {
+        name: `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`,
+        fullName: `${lat.toFixed(4)}°, ${lng.toFixed(4)}°`,
+        lat: lat,
+        lng: lng
+      });
+    });
+  }
+
   // --- Destinations Drawer (Grouped by place like user screenshot) ---
   function renderDestinationsDrawer() {
     if (!destinationsList) return;
@@ -650,22 +930,23 @@
 
     const destMap = new Map();
     photos.forEach((p) => {
-      const locKey = p.location ? p.location.split(',')[0].trim() : 'Chưa định vị';
+      const coords = getPhotoLatLng(p);
+      const locKey = p.location ? p.location.split(',')[0].trim() : (coords ? `${coords.lat.toFixed(2)}, ${coords.lng.toFixed(2)}` : 'Chưa định vị');
       if (!destMap.has(locKey)) {
         destMap.set(locKey, {
           name: locKey,
-          fullName: p.location || 'Địa điểm kỷ niệm',
+          fullName: p.location || (coords ? `Toạ độ ${coords.lat.toFixed(4)}°, ${coords.lng.toFixed(4)}°` : 'Chưa ghim toạ độ'),
           photos: [],
-          lat: p.gps?.lat,
-          lng: p.gps?.lng,
+          lat: coords ? coords.lat : null,
+          lng: coords ? coords.lng : null,
           latestDate: p.date
         });
       }
       const group = destMap.get(locKey);
       group.photos.push(p);
-      if (!group.lat && p.gps?.lat) {
-        group.lat = p.gps.lat;
-        group.lng = p.gps.lng;
+      if (!group.lat && coords) {
+        group.lat = coords.lat;
+        group.lng = coords.lng;
       }
     });
 
@@ -689,14 +970,14 @@
         <div class="destination-thumb">
           <img src="${coverPhoto.url}" alt="${dest.name}" loading="lazy" />
           <span class="places-badge">${dest.photos.length} kỷ niệm</span>
-          ${!hasGps ? '<span class="no-gps-badge">📍 Chưa có GPS</span>' : ''}
+          ${!hasGps ? '<span class="no-gps-badge" style="background:#ff4d4f;color:#fff;padding:2px 6px;border-radius:4px;font-size:10.5px;font-weight:600;">⚠️ Chưa ghim</span>' : ''}
         </div>
         <div class="destination-info">
           <div class="destination-name" title="${dest.fullName}">
             ${hasGps ? '📍' : '⚠️'} ${dest.fullName}
           </div>
           <div class="destination-sub">
-            ${hasGps ? formatDate(dest.latestDate) : '<span style="color:#ff7875;font-weight:600;">Bấm vào để ghim toạ độ</span>'}
+            ${hasGps ? formatDate(dest.latestDate) : '<span style="color:#ff7875;font-weight:600;">Bấm vào đây để ghim vị trí</span>'}
           </div>
         </div>
       `;
@@ -710,7 +991,7 @@
             setTimeout(() => marker.openPopup(), 1200);
           }
         } else {
-          openLightbox(coverPhoto);
+          openLocationPicker(coverPhoto);
         }
       });
 
@@ -886,12 +1167,17 @@
       const card = document.createElement('article');
       card.className = 'photo-card';
 
-      const locationBadgeHtml = item.location
-        ? `<span class="location-badge" title="${item.location}">
-             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-             ${item.location}
+      const coords = getPhotoLatLng(item);
+      const hasGps = coords !== null;
+
+      const locationBadgeHtml = hasGps
+        ? `<span class="location-badge" title="${item.location || 'Toạ độ GPS'}">
+             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+             ${item.location || `${coords.lat.toFixed(2)}°, ${coords.lng.toFixed(2)}°`}
            </span>`
-        : '';
+        : `<span class="no-gps-pill" title="Ảnh chưa có toạ độ. Bấm để ghim lên bản đồ!">
+             ⚠️ Chưa ghim vị trí
+           </span>`;
 
       const dateBadgeHtml = item.date
         ? `<span class="date-badge">${new Date(item.date).toLocaleDateString('vi-VN')}</span>`
@@ -918,10 +1204,10 @@
             <span>${item.camera || 'Camera'}</span>
           </div>
           <div class="card-actions">
-            <button class="btn btn-outline btn-sm copy-btn" data-url="${item.directUrl || item.url}" type="button" title="Sao chép link trực tiếp">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-              Link
+            <button class="btn btn-outline btn-sm pin-btn" type="button" title="Ghim / Đổi toạ độ">
+              📍 ${hasGps ? 'Đổi vị trí' : 'Ghim vị trí'}
             </button>
+            <button class="btn btn-outline btn-sm copy-btn" data-url="${item.directUrl || item.url}" type="button" title="Sao chép link trực tiếp">Link</button>
             <button class="btn btn-outline btn-sm detail-btn" type="button">Chi tiết</button>
           </div>
         </div>
@@ -931,10 +1217,37 @@
       const media = card.querySelector('.card-media');
       const detailBtn = card.querySelector('.detail-btn');
       const copyBtn = card.querySelector('.copy-btn');
+      const pinBtn = card.querySelector('.pin-btn');
+      const noGpsPill = card.querySelector('.no-gps-pill');
+      const locBadge = card.querySelector('.location-badge');
 
       const openDetails = () => openLightbox(item);
       media.addEventListener('click', openDetails);
       detailBtn.addEventListener('click', openDetails);
+
+      if (pinBtn) {
+        pinBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openLocationPicker(item);
+        });
+      }
+
+      if (noGpsPill) {
+        noGpsPill.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openLocationPicker(item);
+        });
+      }
+
+      if (locBadge && hasGps) {
+        locBadge.addEventListener('click', (e) => {
+          e.stopPropagation();
+          switchView('map');
+          flyToMapLocation(coords.lat, coords.lng, 13);
+          const marker = markerMap.get(item.id);
+          if (marker) setTimeout(() => marker.openPopup(), 1200);
+        });
+      }
 
       copyBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -958,47 +1271,34 @@
       : `<span style="color:var(--warn);font-weight:600;">💻 Vị trí: Đang lưu tạm trên máy (Chưa lên Drive)</span>`;
 
     // Location
-    if (item.gps && item.gps.lat && item.gps.lng) {
-      lightboxLocation.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-        <strong>${item.location || 'Đã có toạ độ GPS'}</strong>
-      `;
-      lightboxMapLink.href = `https://www.google.com/maps?q=${item.gps.lat},${item.gps.lng}`;
+    const coords = getPhotoLatLng(item);
+    const hasGps = coords !== null;
+
+    lightboxLocation.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;width:100%;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+          <strong>${hasGps ? (item.location || `${coords.lat.toFixed(4)}°, ${coords.lng.toFixed(4)}°`) : '<span style="color:#ff7875;">Chưa có toạ độ GPS trên bản đồ</span>'}</strong>
+        </div>
+        <button id="lightboxChangeLocBtn" class="btn btn-outline btn-sm" type="button" style="font-size:11.5px;padding:3px 10px;">
+          📍 ${hasGps ? 'Đổi vị trí ghim' : 'Ghim vị trí ngay'}
+        </button>
+      </div>
+    `;
+
+    const changeLocBtn = document.getElementById('lightboxChangeLocBtn');
+    if (changeLocBtn) {
+      changeLocBtn.onclick = () => {
+        closeLightbox();
+        openLocationPicker(item);
+      };
+    }
+
+    if (hasGps) {
+      lightboxMapLink.href = `https://www.google.com/maps?q=${coords.lat},${coords.lng}`;
       lightboxMapLinkWrapper.hidden = false;
     } else {
-      lightboxLocation.innerHTML = `
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <div style="display:flex;align-items:center;gap:6px;color:#ff7875;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-            <span style="font-size:12.5px;font-weight:600;">Ảnh chưa có toạ độ GPS (thường do lưu từ Facebook/Zalo)</span>
-          </div>
-          <div style="font-size:12px;color:var(--muted);">📍 Bấm chọn nhanh địa điểm để ghim bức ảnh này lên bản đồ:</div>
-          <div class="loc-chips-grid">
-            ${POPULAR_LOCATIONS.map(l => `<button type="button" class="loc-chip-btn" data-name="${l.name}" data-lat="${l.lat}" data-lng="${l.lng}">📍 ${l.name}</button>`).join('')}
-          </div>
-        </div>
-      `;
       lightboxMapLinkWrapper.hidden = true;
-
-      lightboxLocation.querySelectorAll('.loc-chip-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const name = btn.getAttribute('data-name');
-          const lat = parseFloat(btn.getAttribute('data-lat'));
-          const lng = parseFloat(btn.getAttribute('data-lng'));
-          item.gps = { lat, lng };
-          item.location = name + ', Việt Nam';
-          if (!accessToken) savePhotos();
-          updateAllViews();
-          closeLightbox();
-          switchView('map');
-          if (travelMap) {
-            flyToMapLocation(lat, lng, 13);
-            const marker = markerMap.get(item.id);
-            if (marker) setTimeout(() => marker.openPopup(), 1200);
-          }
-          showToast(`📍 Đã ghim ảnh "${item.title}" tại ${name}!`);
-        });
-      });
     }
 
     // Camera & settings
@@ -1129,10 +1429,14 @@
       if (!accessToken) savePhotos();
       updateAllViews();
 
-      if (uploadedItem.gps && uploadedItem.gps.lat && travelMap) {
+      const uploadedCoords = getPhotoLatLng(uploadedItem);
+      if (uploadedCoords && travelMap) {
         if (currentView === 'map') {
-          flyToMapLocation(uploadedItem.gps.lat, uploadedItem.gps.lng, 13);
+          flyToMapLocation(uploadedCoords.lat, uploadedCoords.lng, 13);
         }
+      } else if (!uploadedCoords) {
+        showToast(`💡 Ảnh "${uploadedItem.title}" chưa có GPS. Hãy chọn vị trí ghim!`);
+        openLocationPicker(uploadedItem);
       }
 
       // Complete queue item
@@ -1780,6 +2084,17 @@
         updateAllViews();
         configModal.classList.remove('open');
         showToast('Đã ngắt kết nối Google Drive. Dữ liệu lưu trên máy');
+      });
+    }
+
+    // Location Picker & Map Pinning Events
+    if (closeLocPickerBtn) closeLocPickerBtn.addEventListener('click', closeLocationPicker);
+    if (locPickOnMapBtn) locPickOnMapBtn.addEventListener('click', startMapPinning);
+    if (cancelMapPinningBtn) cancelMapPinningBtn.addEventListener('click', cancelMapPinning);
+    if (locSearchInput) locSearchInput.addEventListener('input', (e) => onSearchInput(e.target.value));
+    if (locationPickerModal) {
+      locationPickerModal.addEventListener('click', (e) => {
+        if (e.target === locationPickerModal) closeLocationPicker();
       });
     }
   }
