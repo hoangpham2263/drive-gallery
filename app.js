@@ -708,7 +708,6 @@
       } else {
         travelMap.setView([20.0, 10.0], 2.5);
       }
-    }
   }
 
   function getPhotoLatLng(p) {
