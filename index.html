@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Drive Gallery – Quản lý ảnh Google Drive & Trích xuất vị trí, EXIF</title>
+    <meta name="description" content="Lưu trữ và quản lý ảnh trên Google Drive. Tự động đọc thông số máy ảnh & vị trí chụp (GPS / Địa danh thực tế), tạo link nhúng nhanh." />
+    <link rel="icon" href="brand/favicon.ico" sizes="any" />
+    <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="brand/apple-touch-icon.png" />
+    <link rel="stylesheet" href="style.css?v=1" />
+    <!-- EXIF & GPS Parser Library (Local) -->
+    <script src="vendor/exifr.full.umd.js"></script>
+    <!-- Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+  <body>
+    <main class="wrap">
+      <!-- Header -->
+      <header class="top">
+        <div class="brand-group">
+          <a class="brand" href="https://hoangpham.is-a.dev" title="HoangPham">
+            <img class="brand-img" src="brand/hp-icon.svg" alt="HoangPham" width="42" height="42" />
+          </a>
+          <div class="top-text">
+            <h1>Drive Gallery</h1>
+            <p>Kho ảnh Google Drive • Đọc thông số máy &amp; Địa điểm chụp (GPS)</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span id="connectionBadge" class="status-pill demo">
+            <span class="status-dot"></span>
+            <span id="connectionText">Chế độ Demo</span>
+          </span>
+          <button id="openConfigBtn" class="btn btn-outline btn-sm" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            Cấu hình Drive
+          </button>
+          <a class="ghost" href="https://hoangpham.is-a.dev/tools">← Portfolio</a>
+        </div>
+      </header>
+
+      <!-- Banner note -->
+      <div id="demoBanner" class="banner">
+        <div>
+          <strong>Chế độ Xem thử (Demo):</strong> Bạn có thể kéo thả ảnh vào để trải nghiệm ngay tính năng tự động trích xuất EXIF, đọc toạ độ GPS và biến toạ độ thành tên địa danh thực tế.
+        </div>
+        <button id="connectDrivePromptBtn" class="btn btn-primary btn-sm" type="button">Kết nối Google Drive của bạn</button>
+      </div>
+
+      <!-- Upload Dropzone -->
+      <section class="upload-section">
+        <button id="dropzone" class="drop" type="button">
+          <svg class="drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            <path d="m9 15 3-3 5 5"/>
+            <path d="m14 14 1-1 3 3"/>
+            <circle cx="9" cy="9" r="2"/>
+            <path d="M19 2v6"/>
+            <path d="M22 5h-6"/>
+          </svg>
+          <span class="drop-title">Kéo thả ảnh vào đây hoặc bấm để chọn</span>
+          <span class="muted small">Hỗ trợ JPG, PNG, WEBP, AVIF, HEIC từ điện thoại • Chọn nhiều file cùng lúc</span>
+          <div class="drop-badges">
+            <span class="chip">📍 Trích xuất GPS &amp; Địa danh</span>
+            <span class="chip">📷 Đọc thông số máy ảnh</span>
+            <span class="chip">🔗 Tạo link nhúng Markdown / HTML</span>
+          </div>
+        </button>
+        <input id="fileInput" type="file" accept="image/*,.heic,.heif" multiple hidden />
+
+        <!-- Uploading Queue -->
+        <div id="uploadQueue" class="upload-queue" hidden></div>
+      </section>
+
+      <!-- Toolbar -->
+      <section class="toolbar">
+        <div class="toolbar-left">
+          <div class="search-box">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="muted"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input id="searchInput" type="text" placeholder="Tìm theo tên ảnh, địa điểm, máy ảnh..." />
+          </div>
+
+          <select id="folderSelect" class="select-input">
+            <option value="all">📁 Tất cả thư mục</option>
+            <option value="travel">✈️ Du lịch &amp; Khám phá</option>
+            <option value="work">💼 Công việc &amp; Dự án</option>
+            <option value="daily">☕ Đời sống thường ngày</option>
+          </select>
+        </div>
+
+        <div class="toolbar-right">
+          <select id="sortSelect" class="select-input">
+            <option value="date-desc">Mới nhất trước</option>
+            <option value="date-asc">Cũ nhất trước</option>
+            <option value="name-asc">Tên (A-Z)</option>
+            <option value="size-desc">Dung lượng lớn nhất</option>
+          </select>
+
+          <span id="statsLabel" class="muted small">Đang tải...</span>
+        </div>
+      </section>
+
+      <!-- Photo Gallery Grid -->
+      <section id="galleryGrid" class="gallery">
+        <!-- Rendered by app.js -->
+      </section>
+
+      <!-- How it works guide -->
+      <details class="guide-box">
+        <summary><b>Công cụ này hoạt động như thế nào?</b></summary>
+        <ol>
+          <li><b>Trích xuất EXIF &amp; GPS ngay tại trình duyệt:</b> Khi bạn chọn ảnh, công cụ sử dụng thư viện xử lý metadata để đọc thông tin thiết bị (iPhone, Canon, Sony...), khẩu độ, tiêu cự, ISO và toạ độ GPS.</li>
+          <li><b>Tự động Reverse Geocoding:</b> Toạ độ GPS lập tức được chuyển đổi thành tên địa danh thực tế (phường, quận, thành phố, quốc gia) qua dịch vụ bản đồ mã nguồn mở miễn phí.</li>
+          <li><b>Lưu trữ Google Drive an toàn:</b> Dữ liệu ảnh và thông tin địa điểm được tải thẳng lên thư mục riêng trên tài khoản Google Drive của bạn (scope <code>drive.file</code>), không đi qua bất kỳ server trung gian nào.</li>
+          <li><b>Tạo link nhúng 1-click:</b> Nhận ngay direct link ảnh, cú pháp Markdown hoặc HTML tag để dán vào bài viết blog, portfolio hay tài liệu.</li>
+        </ol>
+      </details>
+    </main>
+
+    <!-- Lightbox / Detail Modal -->
+    <div id="lightboxModal" class="modal-overlay" role="dialog" aria-modal="true">
+      <div class="lightbox-card">
+        <div class="lightbox-preview">
+          <img id="lightboxImg" src="" alt="Photo preview" />
+        </div>
+
+        <div class="lightbox-meta">
+          <div class="meta-header">
+            <div>
+              <h3 id="lightboxTitle">Tên ảnh</h3>
+              <p id="lightboxFolder" class="muted small">Thư mục</p>
+            </div>
+            <button id="closeLightboxBtn" class="ghost" type="button" aria-label="Đóng">✕</button>
+          </div>
+
+          <!-- Location Info -->
+          <div class="meta-section">
+            <span class="meta-label">Địa điểm chụp (GPS)</span>
+            <div id="lightboxLocation" class="meta-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+              <span>Chưa có thông tin vị trí</span>
+            </div>
+            <div id="lightboxMapLinkWrapper" hidden>
+              <a id="lightboxMapLink" class="small" href="#" target="_blank" rel="noopener">Xem trên Google Maps ↗</a>
+            </div>
+          </div>
+
+          <!-- Camera & Specs -->
+          <div class="meta-section">
+            <span class="meta-label">Thông số máy ảnh</span>
+            <div class="meta-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+              <span id="lightboxCamera">iPhone 15 Pro</span>
+            </div>
+            <div class="meta-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+              <span id="lightboxSettings">f/1.8 • 1/250s • ISO 100 • 24mm</span>
+            </div>
+          </div>
+
+          <!-- File info -->
+          <div class="meta-section">
+            <span class="meta-label">Chi tiết tệp</span>
+            <div class="meta-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+              <span id="lightboxDate">20/10/2026 10:30</span>
+            </div>
+            <div class="meta-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+              <span id="lightboxSize">3.2 MB • 4032 x 3024 px</span>
+            </div>
+          </div>
+
+          <!-- Links for embedding -->
+          <div class="meta-section">
+            <span class="meta-label">Nhúng nhanh (1-Click Copy)</span>
+            <div class="form-group">
+              <div class="link-box">
+                <input id="directLinkInput" type="text" readonly value="" />
+                <button id="copyDirectLinkBtn" class="btn btn-outline btn-sm" type="button">Copy Link</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <div class="link-box">
+                <input id="markdownLinkInput" type="text" readonly value="" />
+                <button id="copyMarkdownBtn" class="btn btn-outline btn-sm" type="button">Copy MD</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <div class="link-box">
+                <input id="htmlLinkInput" type="text" readonly value="" />
+                <button id="copyHtmlBtn" class="btn btn-outline btn-sm" type="button">Copy HTML</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="card-actions" style="border:none; padding: 0;">
+            <a id="lightboxDriveLink" class="btn btn-outline btn-sm" href="#" target="_blank" rel="noopener">Mở trên Drive ↗</a>
+            <button id="deletePhotoBtn" class="btn btn-danger btn-sm" type="button">Xóa ảnh</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Config Modal -->
+    <div id="configModal" class="modal-overlay" role="dialog" aria-modal="true">
+      <div class="config-modal">
+        <div class="meta-header">
+          <h3>Cấu hình kết nối Google Drive</h3>
+          <button id="closeConfigBtn" class="ghost" type="button">✕</button>
+        </div>
+
+        <p class="muted small">Kết nối trực tiếp tài khoản Google của bạn bằng OAuth 2.0. Ảnh và dữ liệu sẽ được lưu an toàn trong thư mục riêng trên Drive của bạn.</p>
+
+        <div class="form-group">
+          <label for="clientIdInput">Google OAuth Client ID:</label>
+          <input id="clientIdInput" type="text" placeholder="VD: xxxxx.apps.googleusercontent.com" />
+          <span class="muted small">Tạo miễn phí trong 1 phút tại Google Cloud Console (xem hướng dẫn bên dưới).</span>
+        </div>
+
+        <div class="form-group">
+          <label for="folderNameInput">Tên thư mục trên Drive:</label>
+          <input id="folderNameInput" type="text" value="DriveGallery" />
+        </div>
+
+        <div class="guide-box">
+          <b>Cách lấy Client ID miễn phí:</b>
+          <ol>
+            <li>Vào <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a> &gt; Tạo dự án mới.</li>
+            <li>Vào <b>APIs &amp; Services</b> &gt; Enable <b>Google Drive API</b>.</li>
+            <li>Vào <b>Credentials</b> &gt; <b>Create Credentials</b> &gt; <b>OAuth client ID</b>.</li>
+            <li>Chọn Application type: <b>Web application</b>.</li>
+            <li>Thêm Authorized JavaScript origins:
+              <br /><code>https://hoangpham.is-a.dev</code>
+              <br /><code>http://localhost:3000</code>, <code>http://localhost:8000</code>
+            </li>
+            <li>Copy <b>Client ID</b> dán vào ô bên trên và bấm Kết nối!</li>
+          </ol>
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
+          <button id="resetDemoBtn" class="btn btn-outline" type="button">Khôi phục dữ liệu Demo</button>
+          <button id="saveAndConnectBtn" class="btn btn-primary" type="button">Lưu &amp; Kết nối Google Drive</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">Đã sao chép vào bộ nhớ tạm!</div>
+
+    <script src="app.js?v=1"></script>
+  </body>
+</html>
