@@ -8,7 +8,7 @@
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="brand/apple-touch-icon.png" />
-    <link rel="stylesheet" href="style.css?v=20261020_13" />
+    <link rel="stylesheet" href="style.css?v=20261020_14" />
     <!-- Leaflet CSS for Travel Map -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <!-- Leaflet JS for Travel Map -->
@@ -146,13 +146,17 @@
           </div>
 
           <div class="map-overlay-controls">
+            <button id="mapPinLocationBtn" class="map-reset-btn" type="button" title="Ghim toạ độ cho ảnh kỷ niệm" style="background:#ff4d4f!important;border-color:#ff4d4f!important;color:#fff!important;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+              Ghim vị trí
+            </button>
             <div class="map-layer-switch" role="group" aria-label="Kiểu bản đồ">
               <button id="layerGoogleBtn" class="layer-pill active" type="button" title="Bản đồ Google Maps Việt Nam cực nét">🗺️ Google</button>
               <button id="layerSatBtn" class="layer-pill" type="button" title="Vệ tinh Google kèm tên đường">🛰️ Vệ tinh</button>
               <button id="layerTerrainBtn" class="layer-pill" type="button" title="Địa hình đồi núi sông ngòi">⛰️ Địa hình</button>
               <button id="layerDarkBtn" class="layer-pill" type="button" title="Bản đồ ban đêm">🌙 Đêm</button>
             </div>
-            <button id="resetMapZoomBtn" class="map-reset-btn" type="button" title="Xem toàn cảnh bản đồ Việt Nam">
+            <button id="resetMapZoomBtn" class="map-reset-btn" type="button" title="Xem toàn cảnh bản đồ">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
               Toàn cảnh
             </button>
@@ -313,7 +317,7 @@
     </div>
 
     <!-- Location Picker Modal (Ghim / Đổi vị trí ảnh) -->
-    <div id="locationPickerModal" class="modal-overlay" role="dialog" aria-modal="true" hidden>
+    <div id="locationPickerModal" class="modal-overlay" role="dialog" aria-modal="true">
       <div class="location-picker-modal">
         <div class="meta-header">
           <div style="display:flex;align-items:center;gap:10px;">
@@ -400,6 +404,6 @@
     <!-- Toast Notification -->
     <div id="toast" class="toast">Đã sao chép vào bộ nhớ tạm!</div>
 
-    <script src="app.js?v=20261020_13"></script>
+    <script src="app.js?v=20261020_14"></script>
   </body>
 </html>

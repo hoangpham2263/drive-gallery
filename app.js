@@ -47,6 +47,7 @@
   const travelMapEl = document.getElementById('travelMap');
   const mapPlacesCount = document.getElementById('mapPlacesCount');
   const resetMapZoomBtn = document.getElementById('resetMapZoomBtn');
+  const mapPinLocationBtn = document.getElementById('mapPinLocationBtn');
   const layerGoogleBtn = document.getElementById('layerGoogleBtn');
   const layerSatBtn = document.getElementById('layerSatBtn');
   const layerTerrainBtn = document.getElementById('layerTerrainBtn');
@@ -729,14 +730,14 @@
 
   // --- Location Assignment Helper ---
   async function assignLocationToPhoto(photoId, loc) {
-    const photo = photos.find(p => p.id === photoId);
+    const photo = photos.find(p => String(p.id) === String(photoId));
     if (!photo) return;
     photo.gps = { lat: loc.lat, lng: loc.lng };
     photo.location = loc.fullName || loc.name;
-    if (!accessToken) savePhotos();
+    savePhotos(); // Luôn lưu vào Local Storage để duy trì toạ độ ghim
 
     // If connected to Google Drive, patch file description
-    if (accessToken && !photo.id.startsWith('local-') && !photo.id.startsWith('demo-')) {
+    if (accessToken && !String(photo.id).startsWith('local-') && !String(photo.id).startsWith('demo-')) {
       try {
         fetch(`https://www.googleapis.com/drive/v3/files/${photo.id}`, {
           method: 'PATCH',
@@ -774,9 +775,19 @@
 
   // --- Location Picker & Map Pinning Functions ---
   function openLocationPicker(photo) {
-    activePickerPhoto = photo;
+    if (!photo) {
+      // Pick first unlocated photo, or first photo available
+      const unlocated = photos.find(p => getPhotoLatLng(p) === null);
+      activePickerPhoto = unlocated || photos[0];
+    } else {
+      activePickerPhoto = photo;
+    }
+    if (!activePickerPhoto) {
+      showToast('Chưa có ảnh nào để ghim vị trí. Vui lòng tải ảnh lên trước!');
+      return;
+    }
     if (locPickerPhotoTitle) {
-      locPickerPhotoTitle.textContent = photo ? `Ảnh: ${photo.title}` : 'Chọn vị trí ghim';
+      locPickerPhotoTitle.textContent = `Ảnh: ${activePickerPhoto.title}`;
     }
     if (locSearchInput) {
       locSearchInput.value = '';
@@ -787,13 +798,13 @@
     }
     renderPopularLocations();
     if (locationPickerModal) {
-      locationPickerModal.hidden = false;
+      locationPickerModal.classList.add('open');
     }
   }
 
   function closeLocationPicker() {
     if (locationPickerModal) {
-      locationPickerModal.hidden = true;
+      locationPickerModal.classList.remove('open');
     }
   }
 
@@ -2003,6 +2014,8 @@
       if (e.key === 'Escape') {
         closeLightbox();
         configModal.classList.remove('open');
+        closeLocationPicker();
+        cancelMapPinning();
       }
     });
 
@@ -2088,6 +2101,7 @@
     }
 
     // Location Picker & Map Pinning Events
+    if (mapPinLocationBtn) mapPinLocationBtn.addEventListener('click', () => openLocationPicker());
     if (closeLocPickerBtn) closeLocPickerBtn.addEventListener('click', closeLocationPicker);
     if (locPickOnMapBtn) locPickOnMapBtn.addEventListener('click', startMapPinning);
     if (cancelMapPinningBtn) cancelMapPinningBtn.addEventListener('click', cancelMapPinning);
