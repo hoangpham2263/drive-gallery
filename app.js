@@ -356,6 +356,11 @@
         ? `<span class="date-badge">${new Date(item.date).toLocaleDateString('vi-VN')}</span>`
         : '';
 
+      const isDrive = !!item.driveLink;
+      const storageBadge = isDrive
+        ? `<span style="color:var(--good);font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:3px;" title="Ảnh đã lưu trên Google Drive">☁️ Google Drive</span>`
+        : `<span style="color:var(--warn);font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:3px;" title="Ảnh chỉ lưu tạm trên máy bạn (Chưa lên Drive)">💻 Lưu tạm (Demo)</span>`;
+
       card.innerHTML = `
         <div class="card-media">
           <img src="${item.url}" alt="${item.title}" loading="lazy" />
@@ -365,6 +370,8 @@
         <div class="card-body">
           <h4 class="card-title" title="${item.title}">${item.title}</h4>
           <div class="card-meta">
+            <span>${storageBadge}</span>
+            <span>•</span>
             <span>${formatBytes(item.size)}</span>
             <span>•</span>
             <span>${item.camera || 'Camera'}</span>
@@ -405,7 +412,9 @@
     activePhoto = item;
     lightboxImg.src = item.url;
     lightboxTitle.textContent = item.title;
-    lightboxFolder.textContent = `Thư mục: ${folderSelect.querySelector(`option[value="${item.folder}"]`)?.textContent || 'Tất cả'}`;
+    lightboxFolder.innerHTML = item.driveLink
+      ? `<span style="color:var(--good);font-weight:600;">☁️ Vị trí: Đã lưu trên Google Drive (Thư mục DriveGallery)</span>`
+      : `<span style="color:var(--warn);font-weight:600;">💻 Vị trí: Đang lưu tạm trên máy (Chưa lên Drive)</span>`;
 
     // Location
     if (item.location) {
@@ -561,7 +570,11 @@
       fillEl.style.width = '100%';
       fillEl.style.background = 'var(--good)';
 
-      showToast(`Đã thêm: ${uploadedItem.title} ${locationName ? '• ' + locationName : ''}`);
+      if (accessToken) {
+        showToast(`☁️ Đã lưu lên Google Drive (thư mục DriveGallery): ${uploadedItem.title}`);
+      } else {
+        showToast(`💻 Ảnh đã lưu tạm trên máy (Hãy bấm "Kết nối Google Drive" để lưu lên Drive)`);
+      }
 
       setTimeout(() => {
         queueItem.remove();
