@@ -1,19 +1,19 @@
-# Drive Gallery
+# Hoang's Memories
 
-Quản lý, lưu trữ ảnh trên **Google Drive** — tự động trích xuất thông số máy ảnh (EXIF), toạ độ GPS và chuyển đổi thành **tên địa danh thực tế**, tạo link nhúng nhanh (Direct URL, Markdown, HTML).
+**Hoang's Memories** — Bản đồ Hành trình & Kho lưu trữ kỷ niệm du lịch qua ảnh của **Phạm Quốc Hoàng**. Tự động ghim toạ độ GPS, phân loại theo điểm đến và mốc thời gian, đồng bộ Google Drive.
 
-**Dùng thử:** https://hoangpham.is-a.dev/drive-gallery/
+**Dùng thử:** https://hoangpham.is-a.dev/memories/
 
 ## Tính năng nổi bật
 
-- **Lưu trữ Google Drive:** Kết nối trực tiếp tài khoản Google của bạn qua OAuth 2.0 (Google Identity Services). Ảnh lưu trong thư mục riêng, không qua server trung gian.
-- **Trích xuất vị trí & Địa danh (GPS Reverse Geocoding):** Tự động đọc toạ độ GPS từ ảnh chụp và định vị ra tên địa điểm thực tế (ví dụ: *Hoàn Kiếm, Hà Nội*). Hỗ trợ nút mở vị trí trên Google Maps.
-- **Đọc thông số kỹ thuật (EXIF):** Thiết bị chụp (iPhone, Canon, Sony...), khẩu độ (f-stop), tốc độ màn trập, ISO, tiêu cự, ngày giờ chụp gốc.
-- **Tạo link nhúng 1-Click:** Nhận nhanh Direct Image URL, cú pháp Markdown `![alt](url)` và thẻ HTML `<img ... />` để chèn vào blog/website.
-- **Xem dạng lưới (Gallery Grid) & Lightbox:** Phóng to xem ảnh sắc nét kèm thanh thông tin chi tiết (Info Panel).
-- **Tìm kiếm & Phân loại:** Lọc theo thư mục/album, tìm theo tên, địa danh hoặc thiết bị chụp.
-- **Hỗ trợ đa định dạng:** JPG, PNG, WEBP, AVIF, HEIC từ điện thoại.
-- **Chế độ Demo:** Trải nghiệm ngay các tính năng mà chưa cần cấu hình Google Drive.
+- 🗺️ **Bản đồ Hành trình tương tác (Travel Map):** Bản đồ nền tối sắc nét (ESRI World Dark Gray) với các điểm ghim tròn đồng tâm phát sáng tại các thành phố/điểm đến đã ghé thăm.
+- 🗂️ **Khay Điểm đến (Destinations Drawer):** Đếm số điểm đến đã ghé thăm (VD: *89 cities visited*), tự động nhóm ảnh theo địa danh, bấm vào thẻ điểm đến để lướt bản đồ tới vị trí đó.
+- 📅 **Dòng thời gian (Timeline View):** Sắp xếp album ảnh theo từng mốc thời gian (Tháng/Năm) như một cuốn nhật ký hành trình.
+- 📍 **Ghim vị trí 1-Chạm:** Đối với ảnh tải từ Facebook/Zalo bị xoá GPS, người dùng có thể bấm chọn nhanh địa danh (Hà Nội, Đà Nẵng, TP.HCM, Phú Quốc...) để ghim ảnh lên bản đồ.
+- ☁️ **Lưu trữ Google Drive an toàn:** Kết nối trực tiếp tài khoản Google qua OAuth 2.0 (`drive.file`). Dữ liệu lưu trong thư mục riêng của bạn, không qua server trung gian.
+- 📷 **Đọc thông số kỹ thuật (EXIF):** Nhận diện thiết bị chụp (iPhone, Sony, Canon...), khẩu độ, tiêu cự, ISO, tốc độ chụp.
+- 🔗 **Tạo link nhúng 1-Click:** Nhận nhanh Direct Image URL, Markdown `![alt](url)` và HTML tag để chèn vào blog/portfolio.
+- 🖼️ **Đa định dạng:** Hỗ trợ JPG, PNG, WEBP, AVIF, HEIC từ điện thoại.
 
 ## Chạy thử local
 
