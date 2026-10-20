@@ -8,7 +8,7 @@
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="brand/apple-touch-icon.png" />
-    <link rel="stylesheet" href="style.css?v=20261020_11" />
+    <link rel="stylesheet" href="style.css?v=20261020_12" />
     <!-- Leaflet CSS for Travel Map -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <!-- Leaflet JS for Travel Map -->
@@ -125,8 +125,14 @@
           <div id="travelMap" class="travel-map"></div>
           
           <div class="map-overlay-header">
-            <span class="map-flag">🇻🇳</span>
-            <span class="map-overlay-title">Hành trình Việt Nam</span>
+            <div class="map-scope-switch" role="group" aria-label="Phạm vi hiển thị bản đồ">
+              <button id="scopeVietnamBtn" class="scope-pill active" type="button" title="Chế độ chữ S Việt Nam: Căn chỉnh &amp; giới hạn vùng lãnh thổ Việt Nam">
+                🇻🇳 Chữ S Việt Nam
+              </button>
+              <button id="scopeGlobalBtn" class="scope-pill" type="button" title="Chế độ Toàn cầu: Xem điểm đến trên toàn thế giới">
+                🌍 Toàn cầu
+              </button>
+            </div>
             <span id="mapPlacesCount" class="map-overlay-badge">0 điểm đến</span>
           </div>
 
@@ -345,6 +351,6 @@
     <!-- Toast Notification -->
     <div id="toast" class="toast">Đã sao chép vào bộ nhớ tạm!</div>
 
-    <script src="app.js?v=20261020_11"></script>
+    <script src="app.js?v=20261020_12"></script>
   </body>
 </html>
