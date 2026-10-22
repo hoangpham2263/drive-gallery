@@ -694,7 +694,6 @@
     $("selectBtn").classList.toggle("on", on);
     renderSelBar();
     renderAll();
-    if (on) toast("Bấm vào ảnh để chọn");
   }
   async function batch(action, changes) {
     const ids = [...picked];
