@@ -374,6 +374,7 @@
     $("plans").replaceChildren(...[plans.length ? chips : null, el("div", { className: "place-add" }, input, go), results].filter(Boolean));
   }
 
+  $("settingsBtn").onclick = () => $("settingsDlg").showModal();
   $("plansBtn").onclick = () => { renderPlans(); $("plansDlg").showModal(); };
 
   function placeBox(province, spots) {
@@ -724,13 +725,14 @@
     admin = !!(adminKey && status?.admin);
     $("adminBtn").hidden = admin;
     $("adminActions").hidden = !(admin && status.connected);
-    $("adminBar").hidden = !admin;
+    $("settingsBtn").hidden = !admin;
     if (!admin && selecting) setSelecting(false);
     if (admin) {
-      $("adminBar").classList.toggle("warn", !status.connected);
+      $("settingsBtn").classList.toggle("warn", !status.connected);
+      $("settingsDlg").classList.toggle("warn", !status.connected);
       $("adminText").textContent = status.connected
-        ? `Đang quản lý · Ảnh lưu vào Google Drive: ${status.email || "đã kết nối"}`
-        : "Đang quản lý · Chưa kết nối Google Drive";
+        ? `Ảnh lưu vào Google Drive: ${status.email || "đã kết nối"}`
+        : "Chưa kết nối Google Drive";
       $("connectBtn").textContent = status.connected ? "Đổi tài khoản Drive" : "Kết nối Drive";
       $("driveLink").hidden = !status.folder;
       if (status.folder) $("driveLink").href = `https://drive.google.com/drive/folders/${status.folder}`;
@@ -772,6 +774,7 @@
     if (!s.connected) connectDrive();
   };
   $("logoutBtn").onclick = async () => {
+    $("settingsDlg").close();
     adminKey = null;
     store.set("mem-admin", null);
     renderAdmin(null);

@@ -269,3 +269,14 @@ select {
 .stat span { order: 0; }
 @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .viewer-tools select { width: 200px; }
+
+/* Settings (manage mode) */
+.settings-btn { position: relative; }
+.settings-btn.warn::after { content: ""; position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
+.dlg-sm { width: min(400px, calc(100% - 32px)); }
+.settings-status { display: flex; align-items: center; gap: 8px; font-size: 14px; overflow-wrap: anywhere; }
+.settings-status .admin-dot { width: 8px; height: 8px; border-radius: 50%; background: #16a34a; flex: none; }
+.settings-dlg.warn .admin-dot, .dlg.warn .admin-dot { background: var(--warn); }
+.settings-list { display: grid; gap: 8px; }
+.settings-list > * { width: 100%; justify-content: flex-start; }
+#logoutBtn { color: var(--warn); }

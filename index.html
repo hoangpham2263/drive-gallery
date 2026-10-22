@@ -8,7 +8,7 @@
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <link rel="stylesheet" href="style.css?v=31" />
+    <link rel="stylesheet" href="style.css?v=32" />
   </head>
   <body>
     <main class="wrap">
@@ -18,19 +18,11 @@
         <button id="adminBtn" class="icon" type="button" title="Đăng nhập quản lý" aria-label="Đăng nhập quản lý">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
         </button>
+        <button id="settingsBtn" class="icon settings-btn" type="button" title="Cài đặt" aria-label="Cài đặt" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
         <a class="back" href="https://hoangpham.is-a.dev/tools">← Portfolio</a>
       </header>
-
-      <div id="adminBar" class="admin-bar" hidden>
-        <span class="admin-dot"></span>
-        <span id="adminText" class="admin-text"></span>
-        <div class="actions">
-          <a id="driveLink" class="btn" target="_blank" rel="noopener" hidden>Mở thư mục Drive</a>
-          <button id="backupZip" type="button">Tải album (ZIP)</button>
-          <button id="connectBtn" type="button">Kết nối Drive</button>
-          <button id="logoutBtn" type="button">Thoát</button>
-        </div>
-      </div>
 
       <section class="card map-card">
         <div class="map-head">
@@ -131,6 +123,20 @@
       </form>
     </dialog>
 
+    <!-- Settings (manage mode) -->
+    <dialog id="settingsDlg" class="dlg dlg-sm">
+      <form method="dialog" class="dlg-box">
+        <div class="dlg-head"><strong>Cài đặt</strong><button class="icon" value="cancel" aria-label="Đóng">✕</button></div>
+        <p class="settings-status"><span class="admin-dot"></span><span id="adminText"></span></p>
+        <div class="settings-list">
+          <a id="driveLink" class="btn" target="_blank" rel="noopener" hidden>Mở thư mục Drive</a>
+          <button id="backupZip" type="button">Tải album (ZIP)</button>
+          <button id="connectBtn" type="button">Kết nối Drive</button>
+          <button id="logoutBtn" type="button">Thoát quản lý</button>
+        </div>
+      </form>
+    </dialog>
+
     <!-- Places to go next -->
     <dialog id="plansDlg" class="dlg">
       <form method="dialog" class="dlg-box">
@@ -180,6 +186,6 @@
     <script src="vendor/exifr.full.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
-    <script src="app.js?v=42"></script>
+    <script src="app.js?v=43"></script>
   </body>
 </html>
