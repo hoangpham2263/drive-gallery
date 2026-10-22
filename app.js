@@ -526,6 +526,7 @@
       p.title ? el("p", {}, el("strong", { textContent: p.title })) : null,
       el("p", { className: "muted small", textContent: [where, fmtDate(photoDate(p)), p.camera, p.private ? "🔒 Chỉ mình xem" : ""].filter(Boolean).join(" · ") }),
       p.note ? el("p", { textContent: p.note }) : null,
+      photoInfo(p),
     ].filter(Boolean));
     $("viewerPrev").hidden = viewIndex <= 0;
     $("viewerNext").hidden = viewIndex >= viewList.length - 1;
@@ -542,6 +543,24 @@
       $("coverTrip").hidden = !computeTrips().some((t) => t.photos.includes(p));
       $("togglePrivate").textContent = p.private ? "Công khai ảnh này" : "Chỉ mình xem";
     }
+  }
+  // Original info read from the file at upload time
+  function photoInfo(p) {
+    const e = p.exif || {};
+    const rows = [
+      ["Chụp lúc", e.time],
+      ["Máy ảnh", p.camera],
+      ["Ống kính", e.lens],
+      ["Thông số", [e.focal, e.aperture, e.shutter, e.iso ? `ISO ${e.iso}` : ""].filter(Boolean).join(" · ")],
+      ["Nơi chụp (GPS)", [e.gpsPlace, e.gpsProvince].filter(Boolean).join(", ")],
+      ["Độ cao", e.altitude],
+      ["Kích thước", e.size || (p.width ? `${p.width}×${p.height}` : "")],
+      ["Tên file", p.name],
+    ].filter(([, v]) => v);
+    if (p.lat != null) rows.push(["Tọa độ", el("a", { href: `https://www.google.com/maps?q=${p.lat},${p.lng}`, target: "_blank", rel: "noopener", textContent: `${(+p.lat).toFixed(5)}, ${(+p.lng).toFixed(5)}` })]);
+    if (!rows.length) return null;
+    return el("details", { className: "photo-info" }, el("summary", { textContent: "Thông tin ảnh" }),
+      el("dl", {}, ...rows.flatMap(([k, v]) => [el("dt", { textContent: k }), el("dd", {}, v)])));
   }
   const step = (d) => { if (viewList[viewIndex + d]) { viewIndex += d; showViewer(); } };
   $("viewerPrev").onclick = () => step(-1);
@@ -812,6 +831,7 @@
       source = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
     }
     const bitmap = await createImageBitmap(source);
+    const bitmapW = bitmap.width, bitmapH = bitmap.height;
     const [full, thumb] = await Promise.all([resize(bitmap, 2560, "image/jpeg", 0.88), resize(bitmap, 480, "image/webp", 0.8)]);
     bitmap.close();
     const lat = exif.latitude ?? null, lng = exif.longitude ?? null;
@@ -825,6 +845,19 @@
       place: lat != null ? await placeName(lat, lng) : "",
       takenAt: date instanceof Date && !isNaN(date) ? localDay(date) : "",
       camera: [exif.Make, exif.Model].filter(Boolean).join(" ").replace(/^(\w+) \1/i, "$1").trim(),
+      // Everything else from the file, for the detail view
+      exif: {
+        time: date instanceof Date && !isNaN(date) ? date.toLocaleString("vi-VN") : "",
+        lens: exif.LensModel || "",
+        iso: exif.ISO || "",
+        aperture: exif.FNumber ? `f/${exif.FNumber}` : "",
+        shutter: exif.ExposureTime ? (exif.ExposureTime < 1 ? `1/${Math.round(1 / exif.ExposureTime)}s` : `${exif.ExposureTime}s`) : "",
+        focal: exif.FocalLength ? `${Math.round(exif.FocalLength)}mm` : "",
+        size: `${bitmapW}×${bitmapH} · ${(file.size / 1048576).toFixed(1)} MB`,
+        gpsPlace: lat != null ? await placeName(lat, lng) : "",
+        gpsProvince: lat != null ? provinceAt(lat, lng) || ABROAD : "",
+        altitude: exif.GPSAltitude ? `${Math.round(exif.GPSAltitude)} m` : "",
+      },
     };
   }
 
@@ -896,9 +929,8 @@
   function renderPending(skipped = 0) {
     const noGps = pending.filter((p) => p.lat == null).length;
     $("upSummary").textContent = !pending.length ? (skipped ? "Tất cả ảnh đã có trong album." : "") : `${pending.length} ảnh`
-      + (pending.length - noGps ? ` · ${pending.length - noGps} ảnh có GPS (tự gán nơi)` : "")
-      + (noGps ? ` · ${noGps} ảnh không có GPS` : "")
-      + (skipped ? ` · bỏ qua ${skipped} ảnh trùng` : "");
+      + (skipped ? ` · bỏ qua ${skipped} ảnh trùng` : "")
+      + (noGps < pending.length ? " · không chọn địa điểm thì lưu theo GPS của ảnh" : "");
     $("uploadList").replaceChildren(...pending.map((p) => {
       p.box = el("div", { className: "up-item", title: [p.place, p.province, p.takenAt].filter(Boolean).join(" · ") },
         el("img", { src: p.preview, alt: "" }),
@@ -939,9 +971,12 @@
 
   $("uploadGo").onclick = async () => {
     const todo = pending.filter((p) => !p.done);
-    // Photos without GPS take the chosen province, or "Other" when none is chosen
+    // The chosen place decides where photos are saved; without a choice, use the GPS province (or Other)
     const chosen = $("upProvince").value;
-    for (const p of todo) if (p.lat == null) p.province = chosen;
+    for (const p of todo) {
+      p.province = chosen || p.exif.gpsProvince || "";
+      p.place = p.province === p.exif.gpsProvince ? p.exif.gpsPlace : "";
+    }
     $("uploadGo").disabled = true;
     const t0 = performance.now();
     const total = todo.reduce((n, p) => n + p.full.blob.size + p.thumb.blob.size, 0);
@@ -984,7 +1019,7 @@
       try {
         const added = await api("/api/photos", jsonBody("POST", { items: uploaded.map((p) => ({
           fileId: p.fileId, thumbId: p.thumbId, name: p.name, width: p.full.width, height: p.full.height, hash: p.hash,
-          camera: p.camera, province: p.province, place: p.place || "", takenAt: p.takenAt, title: "", lat: p.lat, lng: p.lng,
+          camera: p.camera, exif: p.exif, province: p.province, place: p.place || "", takenAt: p.takenAt, title: "", lat: p.lat, lng: p.lng,
         })) }));
         photos.push(...added);
         for (const p of uploaded) { p.done = true; p.box.className = "up-item ok"; }

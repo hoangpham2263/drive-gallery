@@ -346,6 +346,16 @@ async function handle(req, env, ctx) {
     return json({ id });
   }
 
+  // Original photo info (shown in the detail view only), short strings only
+  function cleanExif(e) {
+    if (!e || typeof e !== "object") return null;
+    const out = {};
+    for (const k of ["time", "lens", "iso", "aperture", "shutter", "focal", "size", "gpsPlace", "gpsProvince", "altitude"]) {
+      if (e[k] != null && e[k] !== "") out[k] = String(e[k]).slice(0, 80);
+    }
+    return Object.keys(out).length ? out : null;
+  }
+
   // Step 2: add every uploaded photo to the list in one write, so parallel uploads never overwrite each other
   if (path === "/api/photos" && req.method === "POST") {
     const { items = [] } = await req.json();
@@ -358,6 +368,7 @@ async function handle(req, env, ctx) {
       width: Number(x.width) || null,
       height: Number(x.height) || null,
       camera: String(x.camera || "").slice(0, 80) || null,
+      exif: cleanExif(x.exif),
       createdAt: now,
       ...cleanMeta(x),
     }));

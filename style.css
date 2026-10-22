@@ -255,3 +255,9 @@ select {
 .dropzone strong { font-size: 14px; font-weight: 500; }
 .dropzone:hover, .dropzone:focus-visible, .dropzone.over { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 6%, var(--bg)); outline: none; }
 .up-grid:empty { display: none; }
+
+/* Original photo info in the viewer */
+.photo-info summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.photo-info dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 8px 0 0; font-size: 13px; }
+.photo-info dt { color: var(--muted); }
+.photo-info dd { margin: 0; overflow-wrap: anywhere; }
