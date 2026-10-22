@@ -8,7 +8,7 @@
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <link rel="stylesheet" href="style.css?v=33" />
+    <link rel="stylesheet" href="style.css?v=34" />
   </head>
   <body>
     <main class="wrap">
@@ -81,6 +81,8 @@
       <button id="selMove" type="button">Chuyển tỉnh</button>
       <button id="selPrivate" type="button">Chỉ mình xem</button>
       <button id="selPublic" type="button">Công khai</button>
+      <button id="selAll" type="button">Chọn tất cả</button>
+      <button id="selDownload" type="button">Tải về</button>
       <button id="selDelete" type="button">Xóa</button>
       <button id="selDone" class="primary" type="button">Xong</button>
     </div>
@@ -161,6 +163,9 @@
     <dialog id="viewer" class="viewer">
       <div class="viewer-box">
         <button class="icon viewer-close" type="button" id="viewerClose" aria-label="Đóng">✕</button>
+        <button class="icon viewer-download" type="button" id="viewerDownload" title="Tải ảnh về" aria-label="Tải ảnh về">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/></svg>
+        </button>
         <button class="icon viewer-nav prev" type="button" id="viewerPrev" aria-label="Ảnh trước">‹</button>
         <img id="viewerImg" alt="" />
         <button class="icon viewer-nav next" type="button" id="viewerNext" aria-label="Ảnh sau">›</button>
@@ -185,6 +190,6 @@
     <script src="vendor/exifr.full.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
-    <script src="app.js?v=44"></script>
+    <script src="app.js?v=45"></script>
   </body>
 </html>

@@ -421,6 +421,7 @@
       const spots = placesIn(selected);
       $("sideBody").replaceChildren(...[
         spots.length || admin ? placeBox(selected, spots) : null,
+        list.length > 1 ? downloadAll(list, selected) : null,
         list.length ? grid(list) : ticked || spots.length ? null : el("p", { className: "empty", textContent: "Chưa có ảnh." }),
       ].filter(Boolean));
       return;
@@ -446,11 +447,18 @@
     }));
   }
 
+  // "Tải tất cả" above a province / trip photo list
+  function downloadAll(list, title) {
+    const b = el("button", { type: "button", className: "dl-all", textContent: `Tải tất cả ${list.length} ảnh` });
+    b.onclick = () => downloadPhotos(list, `${slug(title) || "memories"}-${list.length}-anh.zip`);
+    return b;
+  }
+
   function showList(title, list, head) {
     selected = title;
     $("sideBack").hidden = false;
     $("sideTitle").textContent = `${title} · ${list.length} ảnh`;
-    $("sideBody").replaceChildren(...(head || []), grid(list));
+    $("sideBody").replaceChildren(...(head || []), ...(list.length > 1 ? [downloadAll(list, title)] : []), grid(list));
   }
 
   // ---------- trips ----------
@@ -674,7 +682,10 @@
   function renderSelBar() {
     $("selBar").hidden = !selecting;
     $("selCount").textContent = `Đã chọn ${picked.size} ảnh`;
-    for (const id of ["selMove", "selPrivate", "selPublic", "selDelete"]) $(id).disabled = !picked.size;
+    for (const id of ["selMove", "selPrivate", "selPublic", "selDownload", "selDelete"]) $(id).disabled = !picked.size;
+    $("selDownload").textContent = picked.size > 1 ? `Tải ${picked.size} ảnh` : "Tải về";
+    const all = photos.length && picked.size === photos.length;
+    $("selAll").textContent = all ? "Bỏ chọn" : "Chọn tất cả";
   }
   function setSelecting(on) {
     selecting = on;
@@ -699,6 +710,12 @@
   }
   $("selectBtn").onclick = () => setSelecting(!selecting);
   $("selDone").onclick = () => setSelecting(false);
+  $("selAll").onclick = () => {
+    if (picked.size === photos.length) picked.clear();
+    else photos.forEach((p) => picked.add(p.id));
+    document.querySelectorAll(".thumb").forEach((b) => b.classList.toggle("sel", picked.size > 0));
+    renderSelBar();
+  };
   $("selMove").onclick = () => {
     const province = $("selProvince").value;
     if (!province && !confirm("Chưa chọn tỉnh: các ảnh sẽ chuyển vào Other. Tiếp tục?")) return;
@@ -787,25 +804,44 @@
   window.addEventListener("focus", () => adminKey && checkAdmin());
 
   // ---------- backup ----------
-  $("backupZip").onclick = async () => {
-    if (!window.JSZip) return toast("Đang tải bộ nén ZIP, thử lại sau vài giây");
-    if (!photos.length) return toast("Chưa có ảnh để tải");
-    const zip = new JSZip();
-    zip.file("memories.json", JSON.stringify({ photos, visited: manual, places, plans, meta }, null, 2));
-    let done = 0;
-    $("backupZip").disabled = true;
-    await pool(photos, 4, async (p) => {
-      try {
-        const r = await fetch(`${API}/api/img/${p.id}`, { headers: { "x-admin-key": adminKey } });
-        if (r.ok) zip.file(`${p.province || OTHER}/${(p.takenAt || "").slice(0, 4) || OTHER}/${p.takenAt || "x"} ${p.id} ${p.name}`, await r.blob());
-      } catch {}
-      toast(`Đang tải album… ${++done}/${photos.length}`, 60000);
-    });
-    toast("Đang nén ZIP…", 60000);
-    download(await zip.generateAsync({ type: "blob" }), `memories-album-${new Date().toISOString().slice(0, 10)}.zip`);
-    $("backupZip").disabled = false;
-    toast(`✓ Đã tải ${done} ảnh`);
-  };
+  // ---------- download ----------
+  const fileName = (p) => [p.takenAt, p.name || `${p.id}.jpg`].filter(Boolean).join(" ");
+  async function fetchPhoto(p) {
+    const r = await fetch(`${API}/api/img/${p.id}`, { headers: adminKey ? { "x-admin-key": adminKey } : {} });
+    if (!r.ok) throw new Error(`Lỗi ${r.status}`);
+    return r.blob();
+  }
+  // One photo: the file itself. Several: one ZIP, folders by place / year, several downloads at once
+  let downloading = false;
+  async function downloadPhotos(list, zipName, extra) {
+    if (!list.length || downloading) return;
+    downloading = true;
+    try {
+      if (list.length === 1 && !extra) {
+        toast("Đang tải ảnh…", 60000);
+        download(await fetchPhoto(list[0]), fileName(list[0]));
+        return toast("✓ Đã tải ảnh");
+      }
+      if (!window.JSZip) return toast("Đang chuẩn bị, thử lại sau vài giây");
+      const zip = new JSZip();
+      if (extra) zip.file("memories.json", extra);
+      let done = 0, failed = 0;
+      toast(`Đang tải ${list.length} ảnh…`, 60000);
+      await pool(list, 6, async (p) => {
+        try { zip.file(`${p.province || OTHER}/${(p.takenAt || "").slice(0, 4) || OTHER}/${fileName(p)}`, await fetchPhoto(p)); }
+        catch { failed++; }
+        toast(`Đang tải ${++done}/${list.length} ảnh…`, 60000);
+      });
+      toast("Đang nén…", 60000);
+      download(await zip.generateAsync({ type: "blob" }), zipName);
+      toast(failed ? `Đã tải ${list.length - failed}/${list.length} ảnh, ${failed} ảnh lỗi` : `✓ Đã tải ${list.length} ảnh`);
+    } catch (err) { toast(err.message); }
+    finally { downloading = false; }
+  }
+  const today = () => new Date().toISOString().slice(0, 10);
+  $("viewerDownload").onclick = () => downloadPhotos([current()]);
+  $("selDownload").onclick = () => downloadPhotos(photos.filter((p) => picked.has(p.id)), `memories-${picked.size}-anh-${today()}.zip`);
+  $("backupZip").onclick = () => downloadPhotos(photos, `memories-album-${today()}.zip`, JSON.stringify({ photos, visited: manual, places, plans, meta }, null, 2));
 
   // ---------- places visited without photos ----------
   async function saveManual(list) {
