@@ -828,7 +828,24 @@
     };
   }
 
-  $("addBtn").onclick = () => $("fileInput").click();
+  // Open the dialog first: pick the place, then drop or choose photos
+  function openUpload() {
+    pending = [];
+    if ($("upProvince").options.length < 2) provinceOptions($("upProvince"), "", "Other (không chọn tỉnh)");
+    $("upProvince").value = selected && provinces.includes(selected) ? selected : "";
+    $("upSummary").textContent = "";
+    $("uploadList").replaceChildren();
+    $("upProgress").hidden = true;
+    $("uploadGo").textContent = "Tải lên";
+    $("uploadGo").disabled = true;
+    $("uploadDlg").showModal();
+  }
+  $("addBtn").onclick = openUpload;
+  const zone = $("dropZone");
+  zone.onclick = () => $("fileInput").click();
+  zone.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("fileInput").click(); } };
+  zone.ondragover = (e) => { e.preventDefault(); zone.classList.add("over"); };
+  zone.ondragleave = () => zone.classList.remove("over");
   $("fileInput").onchange = (e) => {
     const files = [...e.target.files];
     e.target.value = "";
@@ -849,18 +866,18 @@
     handleFiles([...e.dataTransfer.files].filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name)));
   });
 
+  // Add photos to the open dialog (more can be dropped before uploading)
   async function handleFiles(files) {
     if (!files.length) return;
-    pending = [];
-    $("uploadList").replaceChildren(el("p", { className: "muted small", textContent: `Đang đọc ${files.length} ảnh…` }));
-    $("upProgress").hidden = true;
-    $("uploadGo").textContent = "Tải lên";
+    zone.classList.remove("over");
+    if (!$("uploadDlg").open) openUpload();
+    if (pending.length && pending.every((p) => p.done)) { pending = []; $("uploadList").replaceChildren(); $("upProgress").hidden = true; $("uploadGo").textContent = "Tải lên"; }
     $("uploadGo").disabled = true; // until every photo is read
-    $("uploadDlg").showModal();
     // Skip files already in the album, and repeats inside this batch
-    const known = new Set(photos.map((p) => p.hash).filter(Boolean));
+    const known = new Set([...photos, ...pending].map((p) => p.hash).filter(Boolean));
     let skipped = 0, done = 0;
-    const note = $("uploadList").firstChild;
+    const note = $("upSummary");
+    note.textContent = `Đang đọc ${files.length} ảnh…`;
     const ready = await pool(files, Math.max(2, Math.min(4, navigator.hardwareConcurrency || 4)), async (f) => {
       try {
         const hash = await fingerprint(f);
@@ -870,28 +887,18 @@
       } catch (err) { toast(`${f.name}: ${err.message}`); return null; }
       finally { note.textContent = `Đang đọc ảnh ${++done}/${files.length}…`; }
     });
-    pending = ready.filter(Boolean);
+    pending.push(...ready.filter(Boolean));
     if (skipped) toast(`Bỏ qua ${skipped} ảnh đã có trong album`, 3000);
-    if (!pending.length) {
-      $("uploadList").replaceChildren(el("p", { className: "empty", textContent: "Tất cả ảnh đã có trong album." }));
-      $("uploadGo").disabled = true;
-      $("upSummary").textContent = "";
-      $("upPlaceRow").hidden = true;
-      return;
-    }
     renderPending(skipped);
   }
 
   // Simple review: every photo keeps its own date/GPS; one province for photos without GPS
   function renderPending(skipped = 0) {
-    if ($("upProvince").options.length < 2) provinceOptions($("upProvince"), "", "Other (không chọn tỉnh)");
-    $("upProvince").value = "";
     const noGps = pending.filter((p) => p.lat == null).length;
-    $("upSummary").textContent = `${pending.length} ảnh`
+    $("upSummary").textContent = !pending.length ? (skipped ? "Tất cả ảnh đã có trong album." : "") : `${pending.length} ảnh`
       + (pending.length - noGps ? ` · ${pending.length - noGps} ảnh có GPS (tự gán nơi)` : "")
       + (noGps ? ` · ${noGps} ảnh không có GPS` : "")
       + (skipped ? ` · bỏ qua ${skipped} ảnh trùng` : "");
-    $("upPlaceRow").hidden = !noGps;
     $("uploadList").replaceChildren(...pending.map((p) => {
       p.box = el("div", { className: "up-item", title: [p.place, p.province, p.takenAt].filter(Boolean).join(" · ") },
         el("img", { src: p.preview, alt: "" }),

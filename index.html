@@ -8,7 +8,7 @@
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <link rel="stylesheet" href="style.css?v=19" />
+    <link rel="stylesheet" href="style.css?v=20" />
   </head>
   <body>
     <main class="wrap">
@@ -108,9 +108,13 @@
         <div class="dlg-head"><strong>Thêm ảnh</strong><button class="icon" value="cancel" aria-label="Đóng">✕</button></div>
         <p id="upSummary" class="muted small"></p>
         <label class="up-place" id="upPlaceRow">
-          <span class="small">Lưu ảnh không có GPS vào</span>
+          <span class="small">Địa điểm</span>
           <select id="upProvince"></select>
         </label>
+        <div id="dropZone" class="dropzone" role="button" tabindex="0">
+          <strong>Kéo thả ảnh vào đây, hoặc bấm để chọn ảnh</strong>
+          <span class="muted small">Ảnh có GPS tự nhận nơi chụp, ảnh không có GPS lưu vào địa điểm đã chọn</span>
+        </div>
         <div id="uploadList" class="up-grid"></div>
         <div id="upProgress" class="up-progress" hidden>
           <div class="progress"><span id="upBar"></span></div>
@@ -186,6 +190,6 @@
     <script src="vendor/exifr.full.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
-    <script src="app.js?v=27"></script>
+    <script src="app.js?v=28"></script>
   </body>
 </html>

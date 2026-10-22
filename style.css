@@ -249,3 +249,9 @@ select {
 .map-ctrl button { width: 36px; height: 36px; padding: 0; font-size: 18px; line-height: 1; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 1px 2px rgba(15, 23, 42, .06); }
 .map-ctrl button:hover { background: var(--soft); }
 .leaflet-touch .leaflet-control-layers, .leaflet-touch .leaflet-bar { border: 0; }
+
+/* Upload drop zone */
+.dropzone { display: grid; gap: 4px; place-items: center; padding: 28px 16px; text-align: center; border: 1px dashed var(--border); border-radius: 10px; background: var(--soft); cursor: pointer; transition: border-color .15s, background .15s; }
+.dropzone strong { font-size: 14px; font-weight: 500; }
+.dropzone:hover, .dropzone:focus-visible, .dropzone.over { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 6%, var(--bg)); outline: none; }
+.up-grid:empty { display: none; }
