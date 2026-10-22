@@ -86,10 +86,10 @@ button:disabled { opacity: .5; cursor: default; }
 .map-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; }
 .map { height: 640px; border-radius: 10px; background: var(--sea); border: 1px solid var(--border); }
 .leaflet-container { background: var(--sea); font: inherit; }
-.province-label { background: none; border: 0; box-shadow: none; padding: 0; font-size: 9px; opacity: .85; color: var(--muted); white-space: nowrap; }
+.province-label { background: none; border: 0; box-shadow: none; padding: 0; font-size: 7.5px; opacity: .8; color: var(--muted); white-space: nowrap; }
 .province-label span, .island-label span { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); }
 .province-label.visited { color: var(--fg); font-weight: 400; }
-.island-label { font-size: 10px; color: var(--muted); white-space: nowrap; text-align: center; line-height: 1.3; }
+.island-label { font-size: 8.5px; color: var(--muted); white-space: nowrap; text-align: center; line-height: 1.3; }
 .island-label b { display: block; width: 6px; height: 6px; margin: 0 auto 2px; border-radius: 50%; background: var(--muted); }
 .leaflet-tooltip.tip { font-size: 13px; padding: 4px 8px; border-radius: 6px; }
 
