@@ -284,6 +284,50 @@
   const grid = (list) => el("div", { className: "grid" }, ...list.map((p) => thumbButton(p, list)));
 
   // ---------- side panel ----------
+  // Specific places in one province; the owner adds them here, one province at a time
+  async function savePlaces(next, msg) {
+    try { places = await api("/api/places", jsonBody("PUT", { places: next })); renderAll(); toast(msg); }
+    catch (err) { toast(err.message); }
+  }
+  function placeBox(province, spots) {
+    const chips = el("div", { className: "chip-row" }, ...spots.map((x) => {
+      const chip = el("span", { className: "chip" }, el("span", { textContent: x.name }));
+      if (admin) {
+        const del = el("button", { type: "button", textContent: "✕", title: "Bỏ địa điểm" });
+        del.onclick = () => savePlaces(places.filter((y) => y !== x), `Đã bỏ ${x.name}`);
+        chip.append(del);
+      }
+      return chip;
+    }));
+    if (!admin) return chips;
+    const input = el("input", { placeholder: `Thêm địa điểm ở ${province}…`, autocomplete: "off" });
+    const go = el("button", { type: "button", textContent: "Tìm" });
+    const results = el("div", { className: "place-results" });
+    const add = (name, lat, lng) => savePlaces([...places, { name, province, lat, lng }], `✓ Đã thêm ${name}`);
+    const search = async () => {
+      const q = input.value.trim();
+      if (!q) return;
+      results.replaceChildren(el("p", { className: "muted small", textContent: "Đang tìm…" }));
+      let found = [];
+      try {
+        const data = await (await fetch(`https://photon.komoot.io/api/?limit=8&bbox=102,8,110,23.5&q=${encodeURIComponent(q)}`)).json();
+        // Only results inside this province
+        found = data.features.map((f) => ({ lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], label: [f.properties.name, f.properties.district || f.properties.city].filter(Boolean).join(", ") }))
+          .filter((r) => provinceAt(r.lat, r.lng) === province).slice(0, 5);
+      } catch {}
+      const plain = el("button", { type: "button", className: "link", textContent: `Thêm "${q}" không ghim vị trí` });
+      plain.onclick = () => add(q, null, null);
+      results.replaceChildren(...found.map((r) => {
+        const b = el("button", { type: "button", textContent: r.label });
+        b.onclick = () => add(q, r.lat, r.lng);
+        return b;
+      }), ...(found.length ? [] : [el("p", { className: "muted small", textContent: `Không thấy "${q}" ở ${province}.` })]), plain);
+    };
+    go.onclick = search;
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); search(); } });
+    return el("div", { className: "place-box" }, spots.length ? chips : null, el("div", { className: "place-add" }, input, go), results);
+  }
+
   function renderSide() {
     const groups = byProvince();
     $("sideBack").hidden = !selected;
@@ -293,7 +337,7 @@
       const ticked = visitedSet().has(selected);
       const spots = placesIn(selected);
       $("sideBody").replaceChildren(...[
-        spots.length ? el("div", { className: "chip-row" }, ...spots.map((x) => el("span", { className: "chip", textContent: x.name }))) : null,
+        spots.length || admin ? placeBox(selected, spots) : null,
         list.length ? grid(list) : el("p", { className: "empty", textContent: ticked ? "Đã đến, chưa có ảnh." : "Chưa có ảnh ở nơi này." }),
       ].filter(Boolean));
       return;
@@ -650,10 +694,6 @@
   window.addEventListener("focus", () => adminKey && checkAdmin());
 
   // ---------- backup ----------
-  $("backupJson").onclick = () => {
-    const data = { exportedAt: new Date().toISOString(), photos, visited: manual, places, meta };
-    download(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), `memories-${new Date().toISOString().slice(0, 10)}.json`);
-  };
   $("backupZip").onclick = async () => {
     if (!window.JSZip) return toast("Đang tải bộ nén ZIP, thử lại sau vài giây");
     if (!photos.length) return toast("Chưa có ảnh để tải");
@@ -682,52 +722,7 @@
       toast("✓ Đã lưu nơi đã đến");
     } catch (err) { toast(err.message); }
   }
-  // Places draft while the dialog is open
-  let draft = [];
-  function renderDraft() {
-    $("placeList").replaceChildren(...draft.map((x, i) => {
-      const del = el("button", { type: "button", textContent: "✕", title: "Bỏ" });
-      del.onclick = () => { draft.splice(i, 1); renderDraft(); };
-      return el("span", { className: "chip" }, el("span", { textContent: x.name }), el("small", { textContent: x.province || OTHER }), del);
-    }));
-  }
-  // Free OpenStreetMap search (Photon), limited to Vietnam
-  async function searchPlace() {
-    const q = $("placeQuery").value.trim();
-    if (!q) return;
-    $("placeResults").replaceChildren(el("p", { className: "muted small", textContent: "Đang tìm…" }));
-    let found = [];
-    try {
-      const data = await (await fetch(`https://photon.komoot.io/api/?limit=6&bbox=102,8,110,23.5&q=${encodeURIComponent(q)}`)).json();
-      found = data.features.map((f) => {
-        const [lng, lat] = f.geometry.coordinates, pr = f.properties;
-        return { lat, lng, label: [pr.name, pr.district || pr.city, pr.state].filter(Boolean).join(", ") };
-      });
-    } catch {}
-    const add = (lat, lng) => {
-      draft.push({ name: q, lat, lng, province: lat != null ? provinceAt(lat, lng) || "" : "" });
-      $("placeQuery").value = "";
-      $("placeResults").replaceChildren();
-      renderDraft();
-    };
-    $("placeResults").replaceChildren(...[
-      ...found.map((r) => {
-        const b = el("button", { type: "button" }, el("span", { textContent: r.label }), el("small", { textContent: `→ ${provinceAt(r.lat, r.lng) || OTHER}` }));
-        b.onclick = () => add(r.lat, r.lng);
-        return b;
-      }),
-      found.length ? null : el("p", { className: "muted small", textContent: "Không tìm thấy, thử gõ rõ hơn (vd: Mũi Né Phan Thiết)." }),
-      // Keep the name without a pin when the search has no good match
-      (() => { const b = el("button", { type: "button", className: "link", textContent: `Thêm "${q}" không ghim vị trí` }); b.onclick = () => add(null, null); return b; })(),
-    ].filter(Boolean));
-  }
-  $("placeSearch").onclick = searchPlace;
-  $("placeQuery").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); searchPlace(); } });
-
   $("visitedBtn").onclick = () => {
-    draft = places.map((x) => ({ ...x }));
-    renderDraft();
-    $("placeResults").replaceChildren();
     const withPhotos = byProvince();
     $("visitedList").replaceChildren(...provinces.map((n) => {
       const has = withPhotos.has(n);
@@ -737,8 +732,6 @@
     $("visitedDlg").showModal();
   };
   $("visitedSave").onclick = async () => {
-    try { places = await api("/api/places", jsonBody("PUT", { places: draft })); }
-    catch (err) { return toast(err.message); }
     await saveManual([...$("visitedList").querySelectorAll("input:checked:not(:disabled)")].map((x) => x.value));
     $("visitedDlg").close();
   };
