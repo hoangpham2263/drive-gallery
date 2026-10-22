@@ -162,8 +162,8 @@
     const visited = hasPhotos || manual.includes(feature.properties.name);
     const active = feature.properties.name === selected;
     return {
-      color: active ? cssVar("--fg") : cssVar("--bg"),
-      weight: active ? 2 : 1,
+      color: active ? cssVar("--primary") : cssVar("--bg"),
+      weight: active ? 1.25 : 1,
       fillColor: visited ? colorOf(feature.properties.name) : cssVar("--land"),
       fillOpacity: visited ? (hasPhotos ? 0.85 : 0.5) : 1,
     };
@@ -176,7 +176,7 @@
       onEachFeature: (f, lyr) => {
         lyr.on("click", () => selectProvince(f.properties.name));
         // Hovered province on top so neighbours don't cover half of its border
-        lyr.on("mouseover", () => { lyr.setStyle({ weight: 2, color: cssVar("--fg") }); lyr.bringToFront(); });
+        lyr.on("mouseover", () => { lyr.setStyle({ weight: 1.25, color: cssVar("--primary") }); lyr.bringToFront(); });
         lyr.on("mouseout", () => { layer.resetStyle(lyr); raiseSelected(); });
         lyr.bindTooltip(() => {
           const n = byProvince().get(f.properties.name)?.length || 0;
