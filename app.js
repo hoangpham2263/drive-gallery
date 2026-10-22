@@ -224,6 +224,8 @@
         icon: L.divIcon({ className: "island-label", html: `<span><b></b>${is.name}<br>${is.sub}</span>`, iconSize: [0, 0] }),
       }).addTo(map);
     }
+    // Own pane above the provinces, so raising a province never hides the dots
+    map.createPane("dots").style.zIndex = 450;
     pinLayer = L.layerGroup().addTo(map);
     placeLayer = L.layerGroup().addTo(map);
 
@@ -237,7 +239,7 @@
     pinLayer.clearLayers();
     const sorted = newestFirst(photos.filter((p) => p.lat != null && p.lng != null));
     for (const p of sorted) {
-      const pin = L.circleMarker([p.lat, p.lng], { radius: 5, color: "#fff", weight: 1.5, fillColor: cssVar("--primary"), fillOpacity: 1 });
+      const pin = L.circleMarker([p.lat, p.lng], { pane: "dots", radius: 5, color: "#fff", weight: 1.5, fillColor: cssVar("--primary"), fillOpacity: 1 });
       pin.bindTooltip([p.place, fmtDate(photoDate(p))].filter(Boolean).join(" · "), { className: "tip", direction: "top" });
       pin.on("click", () => openViewer(sorted, sorted.indexOf(p)));
       pinLayer.addLayer(pin);
@@ -246,7 +248,7 @@
     placeLayer.clearLayers();
     for (const x of places) {
       if (x.lat == null || x.lng == null) continue;
-      const m = L.circleMarker([x.lat, x.lng], { radius: 4, color: cssVar("--fg"), weight: 1.5, fillColor: cssVar("--bg"), fillOpacity: 1 });
+      const m = L.circleMarker([x.lat, x.lng], { pane: "dots", radius: 5, color: cssVar("--fg"), weight: 1.5, fillColor: cssVar("--bg"), fillOpacity: 1 });
       m.bindTooltip(x.name, { className: "tip", direction: "top" });
       if (x.province) m.on("click", () => selectProvince(x.province));
       placeLayer.addLayer(m);

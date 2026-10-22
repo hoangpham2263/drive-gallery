@@ -261,3 +261,4 @@ select {
 .photo-info dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 8px 0 0; font-size: 13px; }
 .photo-info dt { color: var(--muted); }
 .photo-info dd { margin: 0; overflow-wrap: anywhere; }
+.leaflet-container:focus { outline: none; }
