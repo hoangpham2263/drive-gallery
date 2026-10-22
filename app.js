@@ -4,11 +4,13 @@
   const API = "https://memories-api.hoangpham2263.workers.dev";
   const ABROAD = "Nước ngoài";
   const OTHER = "Other";
+  const TRIP_GAP_DAYS = 2; // photos in the same province within 2 days belong to one trip
   const PALETTE = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa", "#fb923c", "#2dd4bf", "#f87171", "#818cf8", "#a3e635"];
   const ISLANDS = [
     { name: "Quần đảo Hoàng Sa", sub: "(Đà Nẵng)", lat: 16.5, lng: 112.0 },
     { name: "Quần đảo Trường Sa", sub: "(Khánh Hòa)", lat: 9.6, lng: 114.2 },
   ];
+  const VN_BOUNDS = [[8.2, 102.1], [23.4, 115.5]];
 
   const $ = (id) => document.getElementById(id);
   const store = {
@@ -18,22 +20,26 @@
 
   let photos = [];
   let manual = []; // provinces ticked as visited without photos
+  let meta = { trips: {}, covers: {} }; // trip names/notes/covers, province covers
   let geo = null;
   let provinces = []; // names, sorted
-  let selected = null; // province name or null
+  let selected = null; // province name, list title, or null
   let adminKey = store.get("mem-admin");
-  let map, layer;
+  let admin = false;
+  let selecting = false;
+  const picked = new Set();
+  let map, layer, coverLayer, pinLayer;
   const labels = {};
 
   // ---------- helpers ----------
   let toastTimer;
-  function toast(text) {
+  function toast(text, ms = 2200) {
     let el = document.querySelector(".toast");
     if (!el) { el = Object.assign(document.createElement("div"), { className: "toast", role: "status" }); document.body.append(el); }
     el.textContent = text;
     el.classList.add("show");
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
+    toastTimer = setTimeout(() => el.classList.remove("show"), ms);
   }
   const el = (tag, props = {}, ...children) => {
     const node = Object.assign(document.createElement(tag), props);
@@ -41,17 +47,23 @@
     return node;
   };
   const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  const imgUrl = (p, size) => `${API}/api/img/${p.id}${size ? `?size=${size}` : ""}`;
   const photoDate = (p) => p.takenAt || p.createdAt || "";
   const fmtDate = (s) => {
     if (!s) return "";
     const d = new Date(s);
     return isNaN(d) ? "" : d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
   };
+  const slug = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const byProvince = () => {
     const m = new Map();
     for (const p of photos) if (p.province) m.set(p.province, [...(m.get(p.province) || []), p]);
     return m;
+  };
+  const newestFirst = (list) => [...list].sort((a, b) => photoDate(b).localeCompare(photoDate(a)));
+  const download = (blob, name) => {
+    const a = el("a", { href: URL.createObjectURL(blob), download: name });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   };
 
   async function api(path, opts = {}) {
@@ -61,6 +73,18 @@
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.error || `Lỗi ${r.status}`);
     return data;
+  }
+  const jsonBody = (method, body) => ({ method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+  // Public photos load straight from the Worker; private ones need the admin key, so they are fetched as blobs
+  const blobCache = new Map();
+  function setImg(img, p, size) {
+    const url = `${API}/api/img/${p.id}${size ? `?size=${size}` : ""}`;
+    if (!p.private) { img.src = url; return; }
+    if (!blobCache.has(url)) {
+      blobCache.set(url, fetch(url, { headers: { "x-admin-key": adminKey || "" } }).then((r) => (r.ok ? r.blob() : null)).then((b) => (b ? URL.createObjectURL(b) : "")));
+    }
+    blobCache.get(url).then((src) => { if (src) img.src = src; });
   }
 
   // ---------- geometry ----------
@@ -82,15 +106,56 @@
     }
     return null;
   }
+  const labelOf = (name) => geo.features.find((f) => f.properties.name === name)?.properties.label; // [lng, lat]
+
+  // ---------- trips ----------
+  // Consecutive photos in the same province, at most TRIP_GAP_DAYS apart, form one trip
+  function computeTrips() {
+    const dated = photos.filter((p) => p.takenAt && p.province).sort((a, b) => a.takenAt.localeCompare(b.takenAt));
+    const trips = [];
+    let cur = null;
+    for (const p of dated) {
+      const gap = cur ? (new Date(p.takenAt) - new Date(cur.end)) / 86400000 : Infinity;
+      if (cur && cur.province === p.province && gap <= TRIP_GAP_DAYS) {
+        cur.photos.push(p);
+        cur.end = p.takenAt;
+      } else {
+        cur = { province: p.province, start: p.takenAt, end: p.takenAt, photos: [p] };
+        trips.push(cur);
+      }
+    }
+    for (const t of trips) {
+      t.key = `${slug(t.province)}-${t.start}`;
+      const m = meta.trips[t.key] || {};
+      t.name = m.name || t.province;
+      t.note = m.note || "";
+      t.cover = t.photos.find((p) => p.id === m.cover) || t.photos[0];
+      t.places = [...new Set(t.photos.map((p) => p.place).filter(Boolean))];
+    }
+    return trips.reverse();
+  }
+  const tripRange = (t) => {
+    const a = new Date(t.start), b = new Date(t.end);
+    if (t.start === t.end) return fmtDate(t.start);
+    if (a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()) return `${a.getDate()}–${fmtDate(t.end)}`;
+    return `${fmtDate(t.start)} – ${fmtDate(t.end)}`;
+  };
+  const coverOf = (province) => {
+    const list = byProvince().get(province) || [];
+    return list.find((p) => p.id === meta.covers[province]) || newestFirst(list)[0];
+  };
+  const saveMeta = async (next) => {
+    meta = await api("/api/meta", jsonBody("PUT", next));
+    renderAll();
+  };
 
   // ---------- map ----------
   function colorOf(name) {
     const i = provinces.indexOf(name);
     return PALETTE[(i < 0 ? 0 : i) % PALETTE.length];
   }
-
   // Visited = has photos, or ticked by hand
-  const visitedSet = () => new Set([...byProvince().keys(), ...manual].filter((n) => n !== ABROAD && n !== OTHER && provinces.includes(n)));
+  const visitedSet = () => new Set([...byProvince().keys(), ...manual].filter((n) => provinces.includes(n)));
 
   function styleFor(feature) {
     const hasPhotos = byProvince().has(feature.properties.name);
@@ -105,7 +170,7 @@
   }
 
   function initMap() {
-    map = L.map("map", { zoomControl: true, attributionControl: false, zoomSnap: 0.25, minZoom: 4.5, maxZoom: 10 });
+    map = L.map("map", { zoomControl: true, attributionControl: false, zoomSnap: 0.25, minZoom: 4.5, maxZoom: 13 });
     layer = L.geoJSON(geo, {
       style: styleFor,
       onEachFeature: (f, lyr) => {
@@ -132,112 +197,227 @@
         icon: L.divIcon({ className: "island-label", html: `<span><b></b>${is.name}<br>${is.sub}</span>`, iconSize: [0, 0] }),
       }).addTo(map);
     }
+    coverLayer = L.layerGroup().addTo(map);
+    pinLayer = L.layerGroup();
 
-    const fit = () => map.fitBounds(L.latLngBounds([8.2, 102.1], [23.4, 115.5]), { padding: [10, 10] });
-    fit();
+    map.fitBounds(VN_BOUNDS, { padding: [10, 10] });
     map.setMaxBounds(L.latLngBounds([4, 96], [27, 121]));
-    map.on("zoomend", updateLabels);
+    map.on("zoomend", updateLayers);
     window.addEventListener("resize", () => map.invalidateSize());
-    updateLabels();
   }
 
-  // Names of all provinces once zoomed in; only visited ones on the overview
-  function updateLabels() {
+  // Province cover photos on the map, and one pin per GPS photo once zoomed in
+  function drawMarkers() {
+    coverLayer.clearLayers();
+    pinLayer.clearLayers();
+    for (const [province] of byProvince()) {
+      const pos = labelOf(province);
+      const p = coverOf(province);
+      if (!pos || !p) continue;
+      const img = el("img", { alt: province });
+      setImg(img, p, "thumb");
+      const m = L.marker([pos[1], pos[0]], { icon: L.divIcon({ className: "cover-pin", html: "", iconSize: [34, 34], iconAnchor: [17, 46] }) });
+      m.on("add", () => m.getElement()?.replaceChildren(img));
+      m.on("click", () => selectProvince(province));
+      coverLayer.addLayer(m);
+    }
+    const sorted = newestFirst(photos.filter((p) => p.lat != null && p.lng != null));
+    for (const p of sorted) {
+      const pin = L.circleMarker([p.lat, p.lng], { radius: 5, color: "#fff", weight: 1.5, fillColor: cssVar("--primary"), fillOpacity: 1 });
+      pin.bindTooltip([p.place, fmtDate(photoDate(p))].filter(Boolean).join(" · "), { className: "tip", direction: "top" });
+      pin.on("click", () => openViewer(sorted, sorted.indexOf(p)));
+      pinLayer.addLayer(pin);
+    }
+    updateLayers();
+  }
+
+  function updateLayers() {
     const z = map.getZoom();
     const visited = visitedSet();
     for (const [name, m] of Object.entries(labels)) {
-      const v = visited.has(name);
       const node = m.getElement();
       if (!node) continue;
-      node.classList.toggle("visited", v);
-      node.style.display = z >= 6.25 || (v && z >= 5) ? "" : "none";
+      node.classList.toggle("visited", visited.has(name));
+      node.style.display = z >= 6.25 || (visited.has(name) && z >= 5) ? "" : "none";
     }
+    // Covers on the overview, exact photo pins when zoomed in
+    const zoomedIn = z >= 8;
+    if (zoomedIn && map.hasLayer(coverLayer)) map.removeLayer(coverLayer);
+    if (!zoomedIn && !map.hasLayer(coverLayer)) map.addLayer(coverLayer);
+    if (zoomedIn && !map.hasLayer(pinLayer)) map.addLayer(pinLayer);
+    if (!zoomedIn && map.hasLayer(pinLayer)) map.removeLayer(pinLayer);
   }
 
   function refreshMap() {
     if (!layer) return;
     layer.setStyle(styleFor);
-    updateLabels();
+    drawMarkers();
+  }
+
+  function flyTo(province) {
+    const f = geo.features.find((x) => x.properties.name === province);
+    if (f) map.flyToBounds(L.geoJSON(f).getBounds(), { padding: [30, 30], maxZoom: 8, duration: 0.6 });
   }
 
   function selectProvince(name) {
     selected = name;
-    refreshMap();
+    layer.setStyle(styleFor);
     renderSide();
-    const f = geo.features.find((x) => x.properties.name === name);
-    if (f) map.flyToBounds(L.geoJSON(f).getBounds(), { padding: [30, 30], maxZoom: 8, duration: 0.6 });
+    flyTo(name);
   }
 
-  // ---------- side panel ----------
+  // ---------- photo tiles ----------
   function thumbButton(p, list) {
-    const b = el("button", { type: "button", className: "thumb", title: p.title || p.province || "" },
-      el("img", { src: imgUrl(p, "thumb"), alt: p.title || "", loading: "lazy" }));
-    b.onclick = () => openViewer(list, list.indexOf(p));
+    const img = el("img", { alt: p.title || "", loading: "lazy" });
+    setImg(img, p, "thumb");
+    const b = el("button", { type: "button", className: "thumb", title: p.title || p.place || p.province || "" }, img,
+      p.private ? el("span", { className: "lock", textContent: "🔒" }) : null);
+    b.classList.toggle("sel", picked.has(p.id));
+    b.onclick = () => {
+      if (!selecting) return openViewer(list, list.indexOf(p));
+      picked.has(p.id) ? picked.delete(p.id) : picked.add(p.id);
+      b.classList.toggle("sel", picked.has(p.id));
+      renderSelBar();
+    };
     return b;
   }
+  const grid = (list) => el("div", { className: "grid" }, ...list.map((p) => thumbButton(p, list)));
 
+  // ---------- side panel ----------
   function renderSide() {
     const groups = byProvince();
     $("sideBack").hidden = !selected;
-    if (selected) {
-      const list = (groups.get(selected) || []).sort((a, b) => photoDate(b).localeCompare(photoDate(a)));
+    if (selected && provinces.concat(ABROAD).includes(selected)) {
+      const list = newestFirst(groups.get(selected) || []);
       $("sideTitle").textContent = `${selected} · ${list.length} ảnh`;
       const ticked = manual.includes(selected);
-      const toggle = isAdmin() && provinces.includes(selected) && !list.length
+      const toggle = admin && provinces.includes(selected) && !list.length
         ? el("button", { type: "button", className: ticked ? "" : "primary", textContent: ticked ? "Bỏ đánh dấu đã đến" : "✓ Đánh dấu đã đến" })
         : null;
       if (toggle) toggle.onclick = () => saveManual(ticked ? manual.filter((n) => n !== selected) : [...manual, selected]);
       $("sideBody").replaceChildren(
-        list.length
-          ? el("div", { className: "grid" }, ...list.map((p) => thumbButton(p, list)))
-          : el("p", { className: "empty", textContent: ticked ? "Đã đến, chưa có ảnh." : "Chưa có ảnh ở nơi này." }),
+        list.length ? grid(list) : el("p", { className: "empty", textContent: ticked ? "Đã đến, chưa có ảnh." : "Chưa có ảnh ở nơi này." }),
         toggle);
       return;
     }
+    if (selected === OTHER) return showList(OTHER, newestFirst(photos.filter((p) => !p.province)));
+    selected = null;
     $("sideTitle").textContent = "Nơi đã đến";
     const rows = [...groups.entries()].filter(([n]) => n !== ABROAD).sort((a, b) => b[1].length - a[1].length);
     for (const n of manual) if (!groups.has(n)) rows.push([n, []]);
-    const abroad = groups.get(ABROAD);
-    if (abroad) rows.push([ABROAD, abroad]);
-    // Photos with no place chosen are kept under "Other"
+    if (groups.get(ABROAD)) rows.push([ABROAD, groups.get(ABROAD)]);
     const other = photos.filter((p) => !p.province);
     if (other.length) rows.push([OTHER, other]);
-    if (!rows.length) {
-      $("sideBody").replaceChildren(el("p", { className: "empty", textContent: "Chưa có ảnh nào." }));
-      return;
-    }
+    if (!rows.length) return $("sideBody").replaceChildren(el("p", { className: "empty", textContent: "Chưa có ảnh nào." }));
     $("sideBody").replaceChildren(...rows.map(([name, list]) => {
-      const b = el("button", { type: "button", className: "prov" },
-        el("i", { style: `background:${name === ABROAD || name === OTHER ? cssVar("--muted") : colorOf(name)}` }),
+      const cover = name === OTHER ? null : coverOf(name);
+      const icon = cover ? el("img", { className: "prov-cover", alt: "" }) : el("i", { style: `background:${name === OTHER || name === ABROAD ? cssVar("--muted") : colorOf(name)}` });
+      if (cover) setImg(icon, cover, "thumb");
+      const b = el("button", { type: "button", className: "prov" }, icon,
         el("span", { textContent: name }),
         el("small", { textContent: list.length ? `${list.length} ảnh` : "Đã đến" }));
-      b.onclick = () => (name === ABROAD || name === OTHER ? showList(name, list) : selectProvince(name));
+      b.onclick = () => (name === OTHER ? showList(OTHER, newestFirst(list)) : selectProvince(name));
       return b;
     }));
   }
 
-  function showList(title, list) {
+  function showList(title, list, head) {
     selected = title;
     $("sideBack").hidden = false;
     $("sideTitle").textContent = `${title} · ${list.length} ảnh`;
-    $("sideBody").replaceChildren(el("div", { className: "grid" }, ...list.map((p) => thumbButton(p, list))));
+    $("sideBody").replaceChildren(...(head || []), grid(list));
   }
 
-  // ---------- stats & timeline ----------
+  // ---------- trips ----------
+  function openTrip(t, scroll = true) {
+    selected = t.key;
+    layer.setStyle(styleFor);
+    const share = el("button", { type: "button", textContent: "Sao chép link" });
+    share.onclick = async () => {
+      try { await navigator.clipboard.writeText(`${location.origin}${location.pathname}#trip=${t.key}`); toast("✓ Đã sao chép link chuyến đi"); }
+      catch { toast("Không sao chép được"); }
+    };
+    const edit = admin ? el("button", { type: "button", textContent: "Sửa" }) : null;
+    if (edit) edit.onclick = () => editTrip(t);
+    const head = [
+      el("div", { className: "trip-head" },
+        el("p", { className: "muted small", textContent: [tripRange(t), t.places.slice(0, 4).join(", ")].filter(Boolean).join(" · ") }),
+        t.note ? el("p", { className: "trip-note", textContent: t.note }) : null,
+        el("div", { className: "actions" }, edit, share)),
+    ];
+    showList(t.name, t.photos, head);
+    history.replaceState(null, "", `#trip=${t.key}`);
+    flyTo(t.province);
+    if (scroll) document.querySelector(".map-card").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  let editingTrip = null;
+  function editTrip(t) {
+    editingTrip = t;
+    const f = $("tripForm");
+    f.name.value = meta.trips[t.key]?.name || "";
+    f.name.placeholder = t.province;
+    f.note.value = t.note;
+    $("tripDlg").showModal();
+  }
+  $("tripSave").onclick = async () => {
+    const t = editingTrip, f = $("tripForm");
+    try {
+      await saveMeta({ ...meta, trips: { ...meta.trips, [t.key]: { ...(meta.trips[t.key] || {}), name: f.name.value.trim(), note: f.note.value.trim() } } });
+      $("tripDlg").close();
+      const fresh = computeTrips().find((x) => x.key === t.key);
+      if (fresh) openTrip(fresh, false);
+      toast("✓ Đã lưu chuyến đi");
+    } catch (err) { toast(err.message); }
+  };
+
+  function renderTrips() {
+    const trips = computeTrips();
+    $("tripCount").textContent = trips.length ? `${trips.length} chuyến` : "";
+    if (!trips.length) return $("trips").replaceChildren(el("p", { className: "empty", textContent: "Chưa có chuyến đi nào." }));
+    $("trips").replaceChildren(...trips.map((t) => {
+      const img = el("img", { alt: "", loading: "lazy" });
+      setImg(img, t.cover, "thumb");
+      const b = el("button", { type: "button", className: "trip" }, img,
+        el("span", { className: "trip-info" },
+          el("strong", { textContent: t.name }),
+          el("small", { textContent: `${tripRange(t)} · ${t.photos.length} ảnh` })));
+      b.onclick = () => openTrip(t);
+      return b;
+    }));
+  }
+
+  // ---------- stats ----------
   function renderStats() {
-    const visited = visitedSet().size;
-    $("visitedText").textContent = `Đã đến ${visited}/34 tỉnh, thành phố · ${photos.length} ảnh`;
-    $("visitedBar").style.width = `${(visited / 34) * 100}%`;
+    const visited = visitedSet();
+    $("visitedText").textContent = `Đã đến ${visited.size}/34 tỉnh, thành phố · ${photos.length} ảnh`;
+    $("visitedBar").style.width = `${(visited.size / 34) * 100}%`;
     $("photoCount").textContent = photos.length ? `${photos.length} ảnh` : "";
+    $("statsCard").hidden = !photos.length;
+    if (!photos.length) return;
+    const trips = computeTrips();
+    const days = new Set(photos.map((p) => p.takenAt).filter(Boolean)).size;
+    const top = [...byProvince().entries()].filter(([n]) => n !== ABROAD).sort((a, b) => b[1].length - a[1].length)[0];
+    const years = new Map();
+    for (const t of trips) years.set(t.start.slice(0, 4), (years.get(t.start.slice(0, 4)) || 0) + 1);
+    const topYear = [...years.entries()].sort((a, b) => b[1] - a[1])[0];
+    const byLat = [...visited].map((n) => [n, labelOf(n)?.[1]]).filter(([, lat]) => lat != null).sort((a, b) => b[1] - a[1]);
+    const items = [
+      [trips.length, "chuyến đi"],
+      [days, "ngày đã đi"],
+      [visited.size, "tỉnh, thành phố"],
+      top ? [top[0], `đến nhiều nhất · ${top[1].length} ảnh`] : null,
+      topYear ? [topYear[0], `đi nhiều nhất · ${topYear[1]} chuyến`] : null,
+      byLat.length ? [byLat[0][0], "xa nhất phía Bắc"] : null,
+      byLat.length ? [byLat.at(-1)[0], "xa nhất phía Nam"] : null,
+    ].filter(Boolean);
+    $("stats").replaceChildren(...items.map(([v, label]) => el("div", { className: "stat" }, el("strong", { textContent: v }), el("span", { textContent: label }))));
   }
 
+  // ---------- timeline ----------
   function renderTimeline() {
-    if (!photos.length) {
-      $("timeline").replaceChildren(el("p", { className: "empty", textContent: "Chưa có ảnh nào." }));
-      return;
-    }
-    const sorted = [...photos].sort((a, b) => photoDate(b).localeCompare(photoDate(a)));
-    // Month headings, then one row per day with its places
+    if (!photos.length) return $("timeline").replaceChildren(el("p", { className: "empty", textContent: "Chưa có ảnh nào." }));
+    const sorted = newestFirst(photos);
     const months = new Map();
     for (const p of sorted) {
       const d = new Date(photoDate(p));
@@ -261,6 +441,7 @@
   function renderAll() {
     renderStats();
     renderSide();
+    renderTrips();
     renderTimeline();
     refreshMap();
   }
@@ -273,27 +454,33 @@
     showViewer();
     $("viewer").showModal();
   }
+  const current = () => viewList[viewIndex];
   function showViewer() {
-    const p = viewList[viewIndex];
+    const p = current();
     if (!p) return;
-    $("viewerImg").src = imgUrl(p);
+    $("viewerImg").removeAttribute("src");
+    setImg($("viewerImg"), p);
     $("viewerImg").alt = p.title || "";
-    const meta = [[p.place, p.province].filter(Boolean).join(", "), fmtDate(photoDate(p)), p.camera].filter(Boolean).join(" · ");
+    const where = [p.place, p.province].filter(Boolean).join(", ");
     $("viewerText").replaceChildren(
       p.title ? el("p", {}, el("strong", { textContent: p.title })) : null,
-      el("p", { className: "muted small", textContent: meta }),
+      el("p", { className: "muted small", textContent: [where, fmtDate(photoDate(p)), p.camera, p.private ? "🔒 Chỉ mình xem" : ""].filter(Boolean).join(" · ") }),
       p.note ? el("p", { textContent: p.note }) : null,
     );
     $("viewerPrev").hidden = viewIndex <= 0;
     $("viewerNext").hidden = viewIndex >= viewList.length - 1;
-    const f = $("editForm");
-    f.hidden = !adminKey;
-    if (adminKey) {
+    $("viewerTools").hidden = !admin;
+    $("editForm").hidden = !admin;
+    if (admin) {
+      const f = $("editForm");
       f.title.value = p.title || "";
       f.province.value = p.province || "";
       f.place.value = p.place || "";
       f.takenAt.value = (photoDate(p) || "").slice(0, 10);
       f.note.value = p.note || "";
+      $("coverProvince").hidden = !p.province;
+      $("coverTrip").hidden = !computeTrips().some((t) => t.photos.includes(p));
+      $("togglePrivate").textContent = p.private ? "Công khai ảnh này" : "Chỉ mình xem";
     }
   }
   const step = (d) => { if (viewList[viewIndex + d]) { viewIndex += d; showViewer(); } };
@@ -307,25 +494,25 @@
     if (e.key === "ArrowRight") step(1);
   });
 
+  const applyUpdate = (updated) => {
+    for (const u of [].concat(updated)) {
+      const p = photos.find((x) => x.id === u.id);
+      if (p) Object.assign(p, u);
+    }
+  };
+
   $("editForm").onsubmit = async (e) => {
     e.preventDefault();
-    const p = viewList[viewIndex];
     const f = e.target;
     try {
-      const updated = await api(`/api/photos/${p.id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title: f.title.value, province: f.province.value, place: f.place.value, takenAt: f.takenAt.value, note: f.note.value }),
-      });
-      Object.assign(p, updated);
-      Object.assign(photos.find((x) => x.id === p.id) || {}, updated);
+      applyUpdate(await api(`/api/photos/${current().id}`, jsonBody("PATCH", { title: f.title.value, province: f.province.value, place: f.place.value, takenAt: f.takenAt.value, note: f.note.value })));
       renderAll();
       showViewer();
       toast("✓ Đã lưu");
     } catch (err) { toast(err.message); }
   };
   $("deleteBtn").onclick = async () => {
-    const p = viewList[viewIndex];
+    const p = current();
     if (!confirm("Xóa ảnh này khỏi bản đồ và Google Drive?")) return;
     try {
       await api(`/api/photos/${p.id}`, { method: "DELETE" });
@@ -335,10 +522,69 @@
       toast("✓ Đã xóa");
     } catch (err) { toast(err.message); }
   };
+  $("coverProvince").onclick = async () => {
+    const p = current();
+    try { await saveMeta({ ...meta, covers: { ...meta.covers, [p.province]: p.id } }); toast(`✓ Đã đặt ảnh bìa cho ${p.province}`); }
+    catch (err) { toast(err.message); }
+  };
+  $("coverTrip").onclick = async () => {
+    const p = current();
+    const t = computeTrips().find((x) => x.photos.includes(p));
+    if (!t) return;
+    try { await saveMeta({ ...meta, trips: { ...meta.trips, [t.key]: { ...(meta.trips[t.key] || {}), cover: p.id } } }); toast("✓ Đã đặt ảnh bìa chuyến đi"); }
+    catch (err) { toast(err.message); }
+  };
+  $("togglePrivate").onclick = async () => {
+    const p = current();
+    try {
+      applyUpdate(await api(`/api/photos/${p.id}`, jsonBody("PATCH", { private: !p.private })));
+      renderAll();
+      showViewer();
+      toast(p.private ? "🔒 Ảnh chỉ mình bạn xem được" : "✓ Ảnh đã công khai");
+    } catch (err) { toast(err.message); }
+  };
+
+  // ---------- multi-select ----------
+  function renderSelBar() {
+    $("selBar").hidden = !selecting;
+    $("selCount").textContent = `Đã chọn ${picked.size} ảnh`;
+    for (const id of ["selMove", "selPrivate", "selPublic", "selDelete"]) $(id).disabled = !picked.size;
+  }
+  function setSelecting(on) {
+    selecting = on;
+    picked.clear();
+    document.body.classList.toggle("selecting", on);
+    $("selectBtn").classList.toggle("on", on);
+    renderSelBar();
+    renderAll();
+    if (on) toast("Bấm vào ảnh để chọn");
+  }
+  async function batch(action, changes) {
+    const ids = [...picked];
+    try {
+      const res = await api("/api/photos/batch", jsonBody("POST", { action, ids, changes }));
+      if (action === "delete") photos = photos.filter((p) => !picked.has(p.id));
+      else applyUpdate(res);
+      picked.clear();
+      renderSelBar();
+      renderAll();
+      toast(action === "delete" ? `✓ Đã xóa ${ids.length} ảnh` : `✓ Đã cập nhật ${ids.length} ảnh`);
+    } catch (err) { toast(err.message); }
+  }
+  $("selectBtn").onclick = () => setSelecting(!selecting);
+  $("selDone").onclick = () => setSelecting(false);
+  $("selMove").onclick = () => {
+    const province = $("selProvince").value;
+    if (!province && !confirm("Chưa chọn tỉnh: các ảnh sẽ chuyển vào Other. Tiếp tục?")) return;
+    batch("update", { province });
+  };
+  $("selPrivate").onclick = () => batch("update", { private: true });
+  $("selPublic").onclick = () => batch("update", { private: false });
+  $("selDelete").onclick = () => confirm(`Xóa ${picked.size} ảnh khỏi bản đồ và Google Drive?`) && batch("delete");
 
   // ---------- admin ----------
-  function provinceOptions(select, value) {
-    select.replaceChildren(el("option", { value: "", textContent: "— Chọn tỉnh —" }),
+  function provinceOptions(select, value, empty = "— Chọn tỉnh —") {
+    select.replaceChildren(el("option", { value: "", textContent: empty }),
       ...[...provinces, ABROAD].map((n) => el("option", { value: n, textContent: n })));
     select.value = value || "";
   }
@@ -348,29 +594,22 @@
     window.open(`${API}/oauth/start?key=${encodeURIComponent(adminKey)}`, "_blank");
   };
 
-  function logout() {
-    adminKey = null;
-    store.set("mem-admin", null);
-    renderAdmin(null);
-    if ($("viewer").open) showViewer();
-    toast("Đã thoát chế độ quản lý");
-  }
-
-  // Signed out: lock button only. Signed in: green bar with Drive account, + Thêm ảnh, edit in viewer.
+  // Signed out: lock button only. Signed in: bar with Drive account, + Thêm ảnh, edit tools.
   function renderAdmin(status) {
-    const on = !!(adminKey && status?.admin);
-    $("adminBtn").hidden = on;
-    $("adminActions").hidden = !(on && status.connected);
-    $("adminBar").hidden = !on;
-    if (geo) renderSide();
-    if (!on) return;
-    $("adminBar").classList.toggle("warn", !status.connected);
-    $("adminText").textContent = status.connected
-      ? `Đang quản lý · Ảnh lưu vào Google Drive: ${status.email || "đã kết nối"}`
-      : "Đang quản lý · Chưa kết nối Google Drive";
-    $("connectBtn").textContent = status.connected ? "Đổi tài khoản Drive" : "Kết nối Drive";
-    $("driveLink").hidden = !status.folder;
-    if (status.folder) $("driveLink").href = `https://drive.google.com/drive/folders/${status.folder}`;
+    admin = !!(adminKey && status?.admin);
+    $("adminBtn").hidden = admin;
+    $("adminActions").hidden = !(admin && status.connected);
+    $("adminBar").hidden = !admin;
+    if (!admin && selecting) setSelecting(false);
+    if (admin) {
+      $("adminBar").classList.toggle("warn", !status.connected);
+      $("adminText").textContent = status.connected
+        ? `Đang quản lý · Ảnh lưu vào Google Drive: ${status.email || "đã kết nối"}`
+        : "Đang quản lý · Chưa kết nối Google Drive";
+      $("connectBtn").textContent = status.connected ? "Đổi tài khoản Drive" : "Kết nối Drive";
+      $("driveLink").hidden = !status.folder;
+      if (status.folder) $("driveLink").href = `https://drive.google.com/drive/folders/${status.folder}`;
+    }
   }
 
   async function checkAdmin() {
@@ -378,7 +617,10 @@
     try {
       const s = await api("/api/status");
       if (!s.admin) throw new Error("Sai mật khẩu quản lý.");
+      const wasAdmin = admin;
       renderAdmin(s);
+      // Owner also sees private photos
+      if (!wasAdmin) { photos = await api("/api/photos"); renderAll(); }
       return s;
     } catch (err) {
       adminKey = null;
@@ -398,21 +640,51 @@
     toast("✓ Đã vào chế độ quản lý");
     if (!s.connected) connectDrive();
   };
-  $("logoutBtn").onclick = logout;
+  $("logoutBtn").onclick = async () => {
+    adminKey = null;
+    store.set("mem-admin", null);
+    renderAdmin(null);
+    photos = photos.filter((p) => !p.private);
+    renderAll();
+    toast("Đã thoát chế độ quản lý");
+  };
   $("connectBtn").onclick = connectDrive;
   // Coming back from the Google tab: refresh the Drive status
   window.addEventListener("focus", () => adminKey && checkAdmin());
 
+  // ---------- backup ----------
+  $("backupJson").onclick = () => {
+    const data = { exportedAt: new Date().toISOString(), photos, visited: manual, meta };
+    download(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), `memories-${new Date().toISOString().slice(0, 10)}.json`);
+  };
+  $("backupZip").onclick = async () => {
+    if (!window.JSZip) return toast("Đang tải bộ nén ZIP, thử lại sau vài giây");
+    if (!photos.length) return toast("Chưa có ảnh để tải");
+    const zip = new JSZip();
+    zip.file("memories.json", JSON.stringify({ photos, visited: manual, meta }, null, 2));
+    let done = 0;
+    $("backupZip").disabled = true;
+    await pool(photos, 4, async (p) => {
+      try {
+        const r = await fetch(`${API}/api/img/${p.id}`, { headers: { "x-admin-key": adminKey } });
+        if (r.ok) zip.file(`${p.province || OTHER}/${(p.takenAt || "").slice(0, 4) || OTHER}/${p.takenAt || "x"} ${p.id} ${p.name}`, await r.blob());
+      } catch {}
+      toast(`Đang tải album… ${++done}/${photos.length}`, 60000);
+    });
+    toast("Đang nén ZIP…", 60000);
+    download(await zip.generateAsync({ type: "blob" }), `memories-album-${new Date().toISOString().slice(0, 10)}.zip`);
+    $("backupZip").disabled = false;
+    toast(`✓ Đã tải ${done} ảnh`);
+  };
+
   // ---------- places visited without photos ----------
-  const isAdmin = () => !$("adminBar").hidden;
   async function saveManual(list) {
     try {
-      manual = await api("/api/visited", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ provinces: list }) });
+      manual = await api("/api/visited", jsonBody("PUT", { provinces: list }));
       renderAll();
       toast("✓ Đã lưu nơi đã đến");
     } catch (err) { toast(err.message); }
   }
-
   $("visitedBtn").onclick = () => {
     const withPhotos = byProvince();
     $("visitedList").replaceChildren(...provinces.map((n) => {
@@ -423,8 +695,7 @@
     $("visitedDlg").showModal();
   };
   $("visitedSave").onclick = async () => {
-    const list = [...$("visitedList").querySelectorAll("input:checked:not(:disabled)")].map((x) => x.value);
-    await saveManual(list);
+    await saveManual([...$("visitedList").querySelectorAll("input:checked:not(:disabled)")].map((x) => x.value));
     $("visitedDlg").close();
   };
 
@@ -435,8 +706,8 @@
   async function pool(items, limit, task) {
     const out = new Array(items.length);
     let next = 0;
-    const worker = async () => { while (next < items.length) { const i = next++; out[i] = await task(items[i], i); } };
-    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+    const run = async () => { while (next < items.length) { const i = next++; out[i] = await task(items[i], i); } };
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
     return out;
   }
 
@@ -465,7 +736,13 @@
     return geoCache.get(key);
   }
 
-  async function prepare(file) {
+  // Same file → same fingerprint, used to skip photos that are already uploaded
+  async function fingerprint(file) {
+    const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    return [...new Uint8Array(digest)].slice(0, 16).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function prepare(file, hash) {
     let exif = {};
     try { exif = (await exifr.parse(file, { gps: true, tiff: true, exif: true })) || {}; } catch {}
     let source = file;
@@ -479,6 +756,7 @@
     const lat = exif.latitude ?? null, lng = exif.longitude ?? null;
     const date = exif.DateTimeOriginal || exif.CreateDate || (file.lastModified ? new Date(file.lastModified) : null);
     return {
+      hash,
       name: file.name.replace(/\.(heic|heif|png|webp|avif)$/i, ".jpg"),
       preview: URL.createObjectURL(thumb.blob),
       full, thumb, lat, lng,
@@ -515,27 +793,42 @@
     pending = [];
     $("uploadList").replaceChildren(el("p", { className: "muted small", textContent: `Đang đọc ${files.length} ảnh…` }));
     $("upProgress").hidden = true;
+    $("uploadGo").textContent = "Tải lên";
     $("uploadDlg").showModal();
-    let done = 0;
+    // Skip files already in the album, and repeats inside this batch
+    const known = new Set(photos.map((p) => p.hash).filter(Boolean));
+    let skipped = 0, done = 0;
     const note = $("uploadList").firstChild;
     const ready = await pool(files, Math.max(2, Math.min(4, navigator.hardwareConcurrency || 4)), async (f) => {
-      try { return await prepare(f); }
-      catch (err) { toast(`${f.name}: ${err.message}`); return null; }
+      try {
+        const hash = await fingerprint(f);
+        if (known.has(hash)) { skipped++; return null; }
+        known.add(hash);
+        return await prepare(f, hash);
+      } catch (err) { toast(`${f.name}: ${err.message}`); return null; }
       finally { note.textContent = `Đang đọc ảnh ${++done}/${files.length}…`; }
     });
     pending = ready.filter(Boolean);
-    renderPending();
+    if (skipped) toast(`Bỏ qua ${skipped} ảnh đã có trong album`, 3000);
+    if (!pending.length) {
+      $("uploadList").replaceChildren(el("p", { className: "empty", textContent: "Tất cả ảnh đã có trong album." }));
+      $("uploadGo").disabled = true;
+      $("upSummary").textContent = "";
+      $("upPlaceRow").hidden = true;
+      return;
+    }
+    renderPending(skipped);
   }
 
   // Simple review: every photo keeps its own date/GPS; one province for photos without GPS
-  function renderPending() {
-    if ($("upProvince").options.length < 2) {
-      provinceOptions($("upProvince"));
-      $("upProvince").options[0].textContent = "Other (không chọn tỉnh)";
-    }
+  function renderPending(skipped = 0) {
+    if ($("upProvince").options.length < 2) provinceOptions($("upProvince"), "", "Other (không chọn tỉnh)");
     $("upProvince").value = "";
     const noGps = pending.filter((p) => p.lat == null).length;
-    $("upSummary").textContent = `${pending.length} ảnh` + (pending.length - noGps ? ` · ${pending.length - noGps} ảnh có GPS (tự gán nơi)` : "") + (noGps ? ` · ${noGps} ảnh không có GPS` : "");
+    $("upSummary").textContent = `${pending.length} ảnh`
+      + (pending.length - noGps ? ` · ${pending.length - noGps} ảnh có GPS (tự gán nơi)` : "")
+      + (noGps ? ` · ${noGps} ảnh không có GPS` : "")
+      + (skipped ? ` · bỏ qua ${skipped} ảnh trùng` : "");
     $("upPlaceRow").hidden = !noGps;
     $("uploadList").replaceChildren(...pending.map((p) => {
       p.box = el("div", { className: "up-item", title: [p.place, p.province, p.takenAt].filter(Boolean).join(" · ") },
@@ -548,7 +841,7 @@
 
   const UPLOAD_LIMIT = 4;
   // XHR instead of fetch so upload progress can be shown
-  const sendFile = (blob, name, type, extra, onProgress) => new Promise((resolve, reject) => {
+  const sendOnce = (blob, name, type, extra, onProgress) => new Promise((resolve, reject) => {
     const fd = new FormData();
     fd.append("file", new File([blob], name, { type }));
     for (const [k, v] of Object.entries(extra)) fd.append(k, v || "");
@@ -564,6 +857,16 @@
     xhr.onerror = () => reject(new Error("Mất kết nối khi tải lên."));
     xhr.send(fd);
   });
+  // Up to 3 tries with a short pause, so a flaky connection does not fail the photo
+  async function sendFile(...args) {
+    for (let attempt = 1; ; attempt++) {
+      try { return await sendOnce(...args); }
+      catch (err) {
+        if (attempt >= 3) throw err;
+        await new Promise((r) => setTimeout(r, 1000 * attempt));
+      }
+    }
+  }
 
   $("uploadGo").onclick = async () => {
     const todo = pending.filter((p) => !p.done);
@@ -572,7 +875,6 @@
     for (const p of todo) if (p.lat == null) p.province = chosen;
     $("uploadGo").disabled = true;
     const t0 = performance.now();
-    // Overall progress: bytes sent across every photo + photos finished
     const total = todo.reduce((n, p) => n + p.full.blob.size + p.thumb.blob.size, 0);
     const sent = new Map();
     let finished = 0;
@@ -586,16 +888,17 @@
     $("upText").textContent = "Đang chuẩn bị thư mục trên Drive…";
     try {
       const groups = [...new Map(todo.map((p) => [`${p.province}|${(p.takenAt || "").slice(0, 4)}`, { province: p.province, takenAt: p.takenAt }])).values()];
-      await api("/api/folders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ groups }) });
+      await api("/api/folders", jsonBody("POST", { groups }));
     } catch (err) { toast(err.message); }
     paint();
     // 1) files to Drive, several photos at once (full + thumbnail in parallel per photo)
     await pool(todo, UPLOAD_LIMIT, async (p) => {
+      p.box.className = "up-item";
       try {
         const track = (key) => (n) => { sent.set(key, n); paint(); };
         const [fileId, thumbId] = await Promise.all([
-          sendFile(p.full.blob, p.name, "image/jpeg", { province: p.province, takenAt: p.takenAt, place: p.place }, track(p.name + "f")),
-          sendFile(p.thumb.blob, p.name.replace(/\.\w+$/, ".webp"), "image/webp", { kind: "thumb" }, track(p.name + "t")),
+          p.fileId || sendFile(p.full.blob, p.name, "image/jpeg", { province: p.province, takenAt: p.takenAt, place: p.place }, track(p.name + "f")),
+          p.thumbId || sendFile(p.thumb.blob, p.name.replace(/\.\w+$/, ".webp"), "image/webp", { kind: "thumb" }, track(p.name + "t")),
         ]);
         Object.assign(p, { fileId, thumbId });
         finished++;
@@ -606,18 +909,14 @@
       }
     });
     // 2) add them all to the list in one request
-    const uploaded = todo.filter((p) => p.fileId);
+    const uploaded = todo.filter((p) => p.fileId && p.thumbId);
     $("upText").textContent = `Đang lưu ${uploaded.length} ảnh vào bản đồ…`;
     if (uploaded.length) {
       try {
-        const added = await api("/api/photos", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ items: uploaded.map((p) => ({
-            fileId: p.fileId, thumbId: p.thumbId, name: p.name, width: p.full.width, height: p.full.height,
-            camera: p.camera, province: p.province, place: p.place || "", takenAt: p.takenAt, title: p.title || "", lat: p.lat, lng: p.lng,
-          })) }),
-        });
+        const added = await api("/api/photos", jsonBody("POST", { items: uploaded.map((p) => ({
+          fileId: p.fileId, thumbId: p.thumbId, name: p.name, width: p.full.width, height: p.full.height, hash: p.hash,
+          camera: p.camera, province: p.province, place: p.place || "", takenAt: p.takenAt, title: "", lat: p.lat, lng: p.lng,
+        })) }));
         photos.push(...added);
         for (const p of uploaded) { p.done = true; p.box.className = "up-item ok"; }
       } catch (err) {
@@ -625,12 +924,14 @@
       }
     }
     renderAll();
-    $("uploadGo").disabled = false;
     const ok = todo.filter((p) => p.done).length;
+    const failed = pending.filter((p) => !p.done).length;
+    $("uploadGo").disabled = false;
+    $("uploadGo").textContent = failed ? `Tải lại ${failed} ảnh lỗi` : "Tải lên";
     $("upBar").style.width = "100%";
-    $("upText").textContent = `✓ Xong ${ok}/${todo.length} ảnh`;
+    $("upText").textContent = failed ? `Xong ${ok}/${todo.length} ảnh · ${failed} ảnh lỗi, bấm "Tải lại" để thử tiếp` : `✓ Xong ${ok}/${todo.length} ảnh`;
     toast(`✓ Đã tải lên ${ok}/${todo.length} ảnh trong ${((performance.now() - t0) / 1000).toFixed(1)} giây`);
-    if (pending.every((p) => p.done)) setTimeout(() => $("uploadDlg").close(), 800);
+    if (!failed) setTimeout(() => $("uploadDlg").close(), 800);
   };
 
   // ---------- start ----------
@@ -638,19 +939,29 @@
     geo = await (await fetch("vn-34.json")).json();
     provinces = geo.features.map((f) => f.properties.name).sort((a, b) => a.localeCompare(b, "vi"));
     provinceOptions($("editForm").province);
+    provinceOptions($("selProvince"), "", "Chọn tỉnh…");
     initMap();
     try {
-      [photos, manual] = await Promise.all([api("/api/photos"), api("/api/visited").catch(() => [])]);
+      [photos, manual, meta] = await Promise.all([
+        api("/api/photos"),
+        api("/api/visited").catch(() => []),
+        api("/api/meta").catch(() => ({ trips: {}, covers: {} })),
+      ]);
     } catch (err) {
       toast(`Không tải được ảnh: ${err.message}`);
     }
+    await checkAdmin();
     renderAll();
     $("sideBack").onclick = () => {
       selected = null;
+      history.replaceState(null, "", location.pathname);
       renderAll();
-      map.flyToBounds(L.latLngBounds([8.2, 102.1], [23.4, 115.5]), { padding: [10, 10], duration: 0.6 });
+      map.flyToBounds(VN_BOUNDS, { padding: [10, 10], duration: 0.6 });
     };
-    checkAdmin();
+    // Shared trip link: #trip=<key>
+    const key = new URLSearchParams(location.hash.slice(1)).get("trip");
+    const trip = key && computeTrips().find((t) => t.key === key);
+    if (trip) openTrip(trip);
   }
   start();
 })();

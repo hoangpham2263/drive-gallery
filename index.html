@@ -8,7 +8,7 @@
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <link rel="stylesheet" href="style.css?v=8" />
+    <link rel="stylesheet" href="style.css?v=9" />
   </head>
   <body>
     <main class="wrap">
@@ -26,6 +26,8 @@
         <span id="adminText" class="admin-text"></span>
         <div class="actions">
           <a id="driveLink" class="btn" target="_blank" rel="noopener" hidden>Mở thư mục Drive</a>
+          <button id="backupJson" type="button">Tải danh sách (JSON)</button>
+          <button id="backupZip" type="button">Tải album (ZIP)</button>
           <button id="connectBtn" type="button">Kết nối Drive</button>
           <button id="logoutBtn" type="button">Thoát</button>
         </div>
@@ -38,6 +40,7 @@
             <p class="muted small" id="visitedText">Đang tải…</p>
           </div>
           <div class="actions" id="adminActions" hidden>
+            <button id="selectBtn" type="button">Chọn nhiều</button>
             <button id="visitedBtn" type="button">Nơi đã đi</button>
             <button id="addBtn" class="primary" type="button">+ Thêm ảnh</button>
           </div>
@@ -55,6 +58,19 @@
         </div>
       </section>
 
+      <section class="card" id="statsCard" hidden>
+        <h2>Thống kê</h2>
+        <div id="stats" class="stats"></div>
+      </section>
+
+      <section class="card">
+        <div class="sec-head">
+          <h2>Chuyến đi</h2>
+          <span id="tripCount" class="muted small"></span>
+        </div>
+        <div id="trips" class="trips"></div>
+      </section>
+
       <section class="card">
         <div class="sec-head">
           <h2>Dòng thời gian</h2>
@@ -66,15 +82,26 @@
       <details class="howto">
         <summary>Hướng dẫn sử dụng</summary>
         <ol>
-          <li>Bấm vào một tỉnh trên bản đồ (hoặc trong danh sách) để xem ảnh ở nơi đó.</li>
+          <li>Bấm vào một tỉnh trên bản đồ (hoặc trong danh sách) để xem ảnh ở nơi đó. Phóng to bản đồ để thấy điểm chụp từng ảnh.</li>
+          <li>Bấm vào một chuyến đi để xem ảnh của chuyến, bấm "Sao chép link" để gửi đúng chuyến đó cho bạn bè.</li>
           <li>Bấm vào ảnh để xem lớn, dùng phím ← → để chuyển ảnh.</li>
-          <li>Kéo bản đồ để di chuyển, cuộn hoặc chụm hai ngón để phóng to.</li>
-          <li>Chế độ quản lý: bấm "+ Thêm ảnh" hoặc kéo thả ảnh vào trang. Ảnh được lưu trên Google Drive theo thư mục Tỉnh / Năm.</li>
+          <li>Chế độ quản lý: thêm ảnh bằng nút hoặc kéo thả; "Chọn nhiều" để chuyển tỉnh, ẩn hoặc xóa nhiều ảnh cùng lúc. Ảnh lưu trên Google Drive theo thư mục Tỉnh / Năm.</li>
         </ol>
       </details>
 
       <footer class="muted small">Làm bởi <a href="https://hoangpham.is-a.dev" target="_blank" rel="noopener">Phạm Quốc Hoàng</a> · MIT</footer>
     </main>
+
+    <!-- Multi-select actions -->
+    <div id="selBar" class="sel-bar" hidden>
+      <strong id="selCount"></strong>
+      <select id="selProvince"></select>
+      <button id="selMove" type="button">Chuyển tỉnh</button>
+      <button id="selPrivate" type="button">Chỉ mình xem</button>
+      <button id="selPublic" type="button">Công khai</button>
+      <button id="selDelete" type="button">Xóa</button>
+      <button id="selDone" class="primary" type="button">Xong</button>
+    </div>
 
     <!-- Upload review -->
     <dialog id="uploadDlg" class="dlg">
@@ -110,6 +137,19 @@
       </form>
     </dialog>
 
+    <!-- Trip details (name, note) -->
+    <dialog id="tripDlg" class="dlg">
+      <form method="dialog" class="dlg-box" id="tripForm">
+        <div class="dlg-head"><strong>Sửa chuyến đi</strong><button class="icon" value="cancel" aria-label="Đóng">✕</button></div>
+        <input name="name" placeholder="Tên chuyến đi" />
+        <textarea name="note" rows="3" placeholder="Ghi chú ngắn"></textarea>
+        <div class="actions">
+          <button value="cancel" type="submit">Hủy</button>
+          <button id="tripSave" class="primary" type="button">Lưu</button>
+        </div>
+      </form>
+    </dialog>
+
     <!-- Lightbox -->
     <dialog id="viewer" class="viewer">
       <div class="viewer-box">
@@ -119,6 +159,11 @@
         <button class="icon viewer-nav next" type="button" id="viewerNext" aria-label="Ảnh sau">›</button>
         <div class="viewer-info">
           <div id="viewerText"></div>
+          <div id="viewerTools" class="actions viewer-tools" hidden>
+            <button id="coverProvince" type="button">Làm ảnh bìa tỉnh</button>
+            <button id="coverTrip" type="button">Làm ảnh bìa chuyến</button>
+            <button id="togglePrivate" type="button">Chỉ mình xem</button>
+          </div>
           <form id="editForm" class="edit" hidden>
             <input name="title" placeholder="Tiêu đề" />
             <select name="province"></select>
@@ -141,6 +186,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script src="vendor/exifr.full.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
-    <script src="app.js?v=12"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
+    <script src="app.js?v=13"></script>
   </body>
 </html>

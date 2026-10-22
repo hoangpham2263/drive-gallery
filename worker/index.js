@@ -137,7 +137,7 @@ async function mirrorList(env, list) {
   } catch {}
 }
 
-const FIELDS = ["title", "note", "province", "place", "takenAt", "lat", "lng"];
+const FIELDS = ["title", "note", "province", "place", "takenAt", "lat", "lng", "private", "hash"];
 function cleanMeta(input = {}) {
   const out = {};
   for (const k of FIELDS) if (k in input) out[k] = input[k] === "" ? null : input[k];
@@ -145,6 +145,8 @@ function cleanMeta(input = {}) {
   if (out.note) out.note = String(out.note).slice(0, 1000);
   if (out.place) out.place = String(out.place).slice(0, 120);
   for (const k of ["lat", "lng"]) if (out[k] != null) out[k] = Number(out[k]);
+  if ("private" in out) out.private = !!out.private;
+  if (out.hash) out.hash = String(out.hash).slice(0, 64);
   return out;
 }
 
@@ -195,7 +197,13 @@ async function handle(req, env, ctx) {
 
   if (path === "/api/photos" && req.method === "GET") {
     const list = await readList(env);
-    return json(list, 200, { "cache-control": "no-store" });
+    // Private photos are only listed for the owner
+    return json(isAdmin(req, env) ? list : list.filter((p) => !p.private), 200, { "cache-control": "no-store" });
+  }
+
+  // Trip names/notes/covers and province covers
+  if (path === "/api/meta" && req.method === "GET") {
+    return json((await env.MEM.get("meta", "json")) || { trips: {}, covers: {} }, 200, { "cache-control": "no-store" });
   }
 
   // Places visited without photos (ticked by hand)
@@ -222,13 +230,13 @@ async function handle(req, env, ctx) {
     if (hit) return hit;
     const list = await readList(env);
     const item = list.find((p) => p.id === img[1]);
-    if (!item) return new Response("Không tìm thấy ảnh.", { status: 404 });
+    if (!item || (item.private && !isAdmin(req, env))) return new Response("Không tìm thấy ảnh.", { status: 404 });
     const size = url.searchParams.get("size") === "thumb" ? item.thumbId || item.fileId : item.fileId;
     const r = await drive(env, `/drive/v3/files/${size}?alt=media`);
     const res = new Response(r.body, {
-      headers: { "content-type": r.headers.get("content-type") || "image/jpeg", "cache-control": "public, max-age=31536000, immutable" },
+      headers: { "content-type": r.headers.get("content-type") || "image/jpeg", "cache-control": item.private ? "private, no-store" : "public, max-age=31536000, immutable" },
     });
-    ctx.waitUntil(cache.put(req, res.clone()));
+    if (!item.private) ctx.waitUntil(cache.put(req, res.clone()));
     return res;
   }
 
@@ -241,6 +249,43 @@ async function handle(req, env, ctx) {
     const clean = [...new Set(provinces.map((x) => String(x).slice(0, 60)).filter(Boolean))].slice(0, 100);
     await env.MEM.put("visited", JSON.stringify(clean));
     return json(clean);
+  }
+
+  if (path === "/api/meta" && req.method === "PUT") {
+    const body = await req.json();
+    const clip = (v, n) => (v == null ? "" : String(v).slice(0, n));
+    const trips = {};
+    for (const [k, t] of Object.entries(body.trips || {}).slice(0, 500)) {
+      trips[clip(k, 80)] = { name: clip(t.name, 80), note: clip(t.note, 1000), cover: clip(t.cover, 20) };
+    }
+    const covers = {};
+    for (const [k, v] of Object.entries(body.covers || {}).slice(0, 100)) covers[clip(k, 60)] = clip(v, 20);
+    const meta = { trips, covers };
+    await env.MEM.put("meta", JSON.stringify(meta));
+    return json(meta);
+  }
+
+  // Edit or delete many photos in one request
+  if (path === "/api/photos/batch" && req.method === "POST") {
+    const { action, ids = [], changes = {} } = await req.json();
+    const pick = new Set(ids.map(String));
+    let list = await readList(env);
+    const items = list.filter((p) => pick.has(p.id));
+    if (action === "delete") {
+      await Promise.all(items.flatMap((it) => [it.fileId, it.thumbId].filter(Boolean)).map((id) => drive(env, `/drive/v3/files/${id}`, { method: "DELETE" }).catch(() => {})));
+      list = list.filter((p) => !pick.has(p.id));
+    } else {
+      const meta = cleanMeta(changes);
+      for (const it of items) {
+        const before = `${it.province}|${(it.takenAt || "").slice(0, 4)}`;
+        Object.assign(it, meta);
+        if (`${it.province}|${(it.takenAt || "").slice(0, 4)}` !== before) {
+          try { await moveFile(env, it.fileId, await photoFolder(env, it.province, it.takenAt)); } catch {}
+        }
+      }
+    }
+    await writeList(env, list, ctx);
+    return json(action === "delete" ? { deleted: items.length } : items);
   }
 
   // Create the Tỉnh/Tháng folders once before parallel uploads, so they never race to create duplicates

@@ -182,3 +182,43 @@ button:disabled { opacity: .5; cursor: default; }
   .admin-bar .actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
   .admin-bar .actions .btn { grid-column: 1 / -1; }
 }
+
+/* Province covers (list + map) */
+.prov .prov-cover { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; }
+.prov:has(.prov-cover) { grid-template-columns: 28px minmax(0, 1fr) auto; }
+.cover-pin { border: 2px solid #fff; border-radius: 8px; overflow: hidden; background: var(--soft); box-shadow: 0 2px 8px rgba(15, 23, 42, .35); cursor: pointer; }
+.cover-pin img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Stats */
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.stat { display: grid; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--soft); }
+.stat strong { font-size: 18px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat span { font-size: 13px; color: var(--muted); }
+
+/* Trips */
+.trips { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.trip { position: relative; display: block; height: auto; padding: 0; aspect-ratio: 4 / 3; overflow: hidden; border: 0; border-radius: 10px; background: var(--soft); text-align: left; }
+.trip img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .25s; }
+.trip:hover img { transform: scale(1.04); }
+.trip-info { position: absolute; inset: auto 0 0 0; display: grid; padding: 24px 10px 8px; color: #fff; background: linear-gradient(transparent, rgba(0, 0, 0, .7)); }
+.trip-info strong, .trip-info small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trip-info small { font-size: 12px; opacity: .9; }
+.trip-head { display: grid; gap: 6px; }
+.trip-head p { margin: 0; }
+.trip-head .actions { justify-content: flex-start; }
+
+/* Multi-select */
+.thumb .lock { position: absolute; top: 4px; left: 4px; font-size: 11px; padding: 1px 4px; border-radius: 6px; background: rgba(0, 0, 0, .55); }
+.selecting .thumb::after { content: ""; position: absolute; top: 6px; right: 6px; width: 18px; height: 18px; border-radius: 50%; border: 2px solid #fff; background: rgba(0, 0, 0, .25); }
+.selecting .thumb.sel { outline: 3px solid var(--primary); outline-offset: -3px; }
+.selecting .thumb.sel::after { content: "✓"; display: grid; place-items: center; font-size: 11px; color: #fff; background: var(--primary); border-color: var(--primary); }
+#selectBtn.on { color: var(--primary); border-color: var(--primary); }
+.sel-bar { position: fixed; left: 50%; bottom: 16px; z-index: 1000; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: max-content; max-width: calc(100% - 32px); padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); box-shadow: 0 8px 24px rgba(15, 23, 42, .2); font-size: 14px; }
+.sel-bar select { width: 180px; }
+.selecting .wrap { padding-bottom: 120px; }
+.viewer-tools { justify-content: flex-start; flex-wrap: wrap; }
+
+@media (max-width: 640px) {
+  .sel-bar { width: calc(100% - 32px); display: grid; grid-template-columns: 1fr 1fr; }
+  .sel-bar strong, .sel-bar select { grid-column: 1 / -1; width: 100%; }
+}
