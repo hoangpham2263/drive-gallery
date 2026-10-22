@@ -17,6 +17,7 @@
   };
 
   let photos = [];
+  let manual = []; // provinces ticked as visited without photos
   let geo = null;
   let provinces = []; // names, sorted
   let selected = null; // province name or null
@@ -88,14 +89,18 @@
     return PALETTE[(i < 0 ? 0 : i) % PALETTE.length];
   }
 
+  // Visited = has photos, or ticked by hand
+  const visitedSet = () => new Set([...byProvince().keys(), ...manual].filter((n) => n !== ABROAD && n !== OTHER && provinces.includes(n)));
+
   function styleFor(feature) {
-    const visited = byProvince().has(feature.properties.name);
+    const hasPhotos = byProvince().has(feature.properties.name);
+    const visited = hasPhotos || manual.includes(feature.properties.name);
     const active = feature.properties.name === selected;
     return {
       color: active ? cssVar("--fg") : cssVar("--bg"),
       weight: active ? 2 : 1,
       fillColor: visited ? colorOf(feature.properties.name) : cssVar("--land"),
-      fillOpacity: visited ? 0.85 : 1,
+      fillOpacity: visited ? (hasPhotos ? 0.85 : 0.5) : 1,
     };
   }
 
@@ -109,7 +114,7 @@
         lyr.on("mouseout", () => layer.resetStyle(lyr));
         lyr.bindTooltip(() => {
           const n = byProvince().get(f.properties.name)?.length || 0;
-          return `${f.properties.name}${n ? ` · ${n} ảnh` : ""}`;
+          return `${f.properties.name}${n ? ` · ${n} ảnh` : manual.includes(f.properties.name) ? " · Đã đến" : ""}`;
         }, { sticky: true, className: "tip", direction: "top" });
       },
     }).addTo(map);
@@ -139,7 +144,7 @@
   // Names of all provinces once zoomed in; only visited ones on the overview
   function updateLabels() {
     const z = map.getZoom();
-    const visited = byProvince();
+    const visited = visitedSet();
     for (const [name, m] of Object.entries(labels)) {
       const v = visited.has(name);
       const node = m.getElement();
@@ -177,13 +182,21 @@
     if (selected) {
       const list = (groups.get(selected) || []).sort((a, b) => photoDate(b).localeCompare(photoDate(a)));
       $("sideTitle").textContent = `${selected} · ${list.length} ảnh`;
-      $("sideBody").replaceChildren(list.length
-        ? el("div", { className: "grid" }, ...list.map((p) => thumbButton(p, list)))
-        : el("p", { className: "empty", textContent: "Chưa có ảnh ở nơi này." }));
+      const ticked = manual.includes(selected);
+      const toggle = isAdmin() && provinces.includes(selected) && !list.length
+        ? el("button", { type: "button", className: ticked ? "" : "primary", textContent: ticked ? "Bỏ đánh dấu đã đến" : "✓ Đánh dấu đã đến" })
+        : null;
+      if (toggle) toggle.onclick = () => saveManual(ticked ? manual.filter((n) => n !== selected) : [...manual, selected]);
+      $("sideBody").replaceChildren(
+        list.length
+          ? el("div", { className: "grid" }, ...list.map((p) => thumbButton(p, list)))
+          : el("p", { className: "empty", textContent: ticked ? "Đã đến, chưa có ảnh." : "Chưa có ảnh ở nơi này." }),
+        toggle);
       return;
     }
     $("sideTitle").textContent = "Nơi đã đến";
     const rows = [...groups.entries()].filter(([n]) => n !== ABROAD).sort((a, b) => b[1].length - a[1].length);
+    for (const n of manual) if (!groups.has(n)) rows.push([n, []]);
     const abroad = groups.get(ABROAD);
     if (abroad) rows.push([ABROAD, abroad]);
     // Photos with no place chosen are kept under "Other"
@@ -197,7 +210,7 @@
       const b = el("button", { type: "button", className: "prov" },
         el("i", { style: `background:${name === ABROAD || name === OTHER ? cssVar("--muted") : colorOf(name)}` }),
         el("span", { textContent: name }),
-        el("small", { textContent: `${list.length} ảnh` }));
+        el("small", { textContent: list.length ? `${list.length} ảnh` : "Đã đến" }));
       b.onclick = () => (name === ABROAD || name === OTHER ? showList(name, list) : selectProvince(name));
       return b;
     }));
@@ -212,7 +225,7 @@
 
   // ---------- stats & timeline ----------
   function renderStats() {
-    const visited = [...byProvince().keys()].filter((n) => n !== ABROAD).length;
+    const visited = visitedSet().size;
     $("visitedText").textContent = `Đã đến ${visited}/34 tỉnh, thành phố · ${photos.length} ảnh`;
     $("visitedBar").style.width = `${(visited / 34) * 100}%`;
     $("photoCount").textContent = photos.length ? `${photos.length} ảnh` : "";
@@ -349,6 +362,7 @@
     $("adminBtn").hidden = on;
     $("adminActions").hidden = !(on && status.connected);
     $("adminBar").hidden = !on;
+    if (geo) renderSide();
     if (!on) return;
     $("adminBar").classList.toggle("warn", !status.connected);
     $("adminText").textContent = status.connected
@@ -388,6 +402,31 @@
   $("connectBtn").onclick = connectDrive;
   // Coming back from the Google tab: refresh the Drive status
   window.addEventListener("focus", () => adminKey && checkAdmin());
+
+  // ---------- places visited without photos ----------
+  const isAdmin = () => !$("adminBar").hidden;
+  async function saveManual(list) {
+    try {
+      manual = await api("/api/visited", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ provinces: list }) });
+      renderAll();
+      toast("✓ Đã lưu nơi đã đến");
+    } catch (err) { toast(err.message); }
+  }
+
+  $("visitedBtn").onclick = () => {
+    const withPhotos = byProvince();
+    $("visitedList").replaceChildren(...provinces.map((n) => {
+      const has = withPhotos.has(n);
+      const box = el("input", { type: "checkbox", value: n, checked: has || manual.includes(n), disabled: has });
+      return el("label", { className: "vis-item", title: has ? "Đã có ảnh" : "" }, box, el("span", { textContent: n }), has ? el("small", { textContent: "có ảnh" }) : null);
+    }));
+    $("visitedDlg").showModal();
+  };
+  $("visitedSave").onclick = async () => {
+    const list = [...$("visitedList").querySelectorAll("input:checked:not(:disabled)")].map((x) => x.value);
+    await saveManual(list);
+    $("visitedDlg").close();
+  };
 
   // ---------- upload ----------
   let pending = [];
@@ -601,7 +640,7 @@
     provinceOptions($("editForm").province);
     initMap();
     try {
-      photos = await api("/api/photos");
+      [photos, manual] = await Promise.all([api("/api/photos"), api("/api/visited").catch(() => [])]);
     } catch (err) {
       toast(`Không tải được ảnh: ${err.message}`);
     }

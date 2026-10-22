@@ -198,6 +198,11 @@ async function handle(req, env, ctx) {
     return json(list, 200, { "cache-control": "no-store" });
   }
 
+  // Places visited without photos (ticked by hand)
+  if (path === "/api/visited" && req.method === "GET") {
+    return json((await env.MEM.get("visited", "json")) || [], 200, { "cache-control": "no-store" });
+  }
+
   if (path === "/api/status" && req.method === "GET") {
     const admin = isAdmin(req, env);
     return json({
@@ -230,6 +235,13 @@ async function handle(req, env, ctx) {
   // ----- admin only below -----
   if (!path.startsWith("/api/")) return new Response("Not found", { status: 404 });
   if (!isAdmin(req, env)) return json({ error: "Sai mật khẩu quản lý." }, 401);
+
+  if (path === "/api/visited" && req.method === "PUT") {
+    const { provinces = [] } = await req.json();
+    const clean = [...new Set(provinces.map((x) => String(x).slice(0, 60)).filter(Boolean))].slice(0, 100);
+    await env.MEM.put("visited", JSON.stringify(clean));
+    return json(clean);
+  }
 
   // Create the Tỉnh/Tháng folders once before parallel uploads, so they never race to create duplicates
   if (path === "/api/folders" && req.method === "POST") {
