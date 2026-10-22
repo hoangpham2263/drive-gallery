@@ -585,6 +585,7 @@
     $("viewerNext").hidden = viewIndex >= viewList.length - 1;
     $("viewerTools").hidden = !admin;
     if (admin) {
+      $("moveProvince").value = p.province || "";
       $("coverProvince").hidden = !p.province;
       $("coverTrip").hidden = !computeTrips().some((t) => t.photos.includes(p));
       $("togglePrivate").textContent = p.private ? "Công khai ảnh này" : "Chỉ mình xem";
@@ -626,6 +627,15 @@
     }
   };
 
+  // Change place: pick a province, saved at once (the file moves to that folder on Drive)
+  $("moveProvince").onchange = async (e) => {
+    try {
+      applyUpdate(await api(`/api/photos/${current().id}`, jsonBody("PATCH", { province: e.target.value })));
+      renderAll();
+      showViewer();
+      toast(`✓ Đã chuyển sang ${e.target.value || OTHER}`);
+    } catch (err) { toast(err.message); }
+  };
   $("deleteBtn").onclick = async () => {
     const p = current();
     if (!confirm("Xóa ảnh này khỏi bản đồ và Google Drive?")) return;
@@ -1078,6 +1088,7 @@
     geo = await (await fetch("vn-34.json")).json();
     provinces = geo.features.map((f) => f.properties.name).sort((a, b) => a.localeCompare(b, "vi"));
     provinceOptions($("selProvince"), "", "Chọn tỉnh…");
+    provinceOptions($("moveProvince"), "", "Other");
     initMap();
     try {
       [photos, manual, meta, places, plans] = await Promise.all([

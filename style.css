@@ -268,3 +268,4 @@ select {
 .stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .stat span { order: 0; }
 @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.viewer-tools select { width: 200px; }
