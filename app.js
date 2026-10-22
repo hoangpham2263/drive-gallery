@@ -28,7 +28,7 @@
   let admin = false;
   let selecting = false;
   const picked = new Set();
-  let map, layer, coverLayer, pinLayer;
+  let map, layer, pinLayer;
   const labels = {};
 
   // ---------- helpers ----------
@@ -197,7 +197,6 @@
         icon: L.divIcon({ className: "island-label", html: `<span><b></b>${is.name}<br>${is.sub}</span>`, iconSize: [0, 0] }),
       }).addTo(map);
     }
-    coverLayer = L.layerGroup().addTo(map);
     pinLayer = L.layerGroup();
 
     // Button under +/− to go back to the whole country
@@ -219,21 +218,9 @@
     window.addEventListener("resize", () => map.invalidateSize());
   }
 
-  // Province cover photos on the map, and one pin per GPS photo once zoomed in
+  // One small pin per GPS photo, shown once zoomed in
   function drawMarkers() {
-    coverLayer.clearLayers();
     pinLayer.clearLayers();
-    for (const [province] of byProvince()) {
-      const pos = labelOf(province);
-      const p = coverOf(province);
-      if (!pos || !p) continue;
-      const img = el("img", { alt: province });
-      setImg(img, p, "thumb");
-      const m = L.marker([pos[1], pos[0]], { icon: L.divIcon({ className: "cover-pin", html: "", iconSize: [34, 34], iconAnchor: [17, 46] }) });
-      m.on("add", () => m.getElement()?.replaceChildren(img));
-      m.on("click", () => selectProvince(province));
-      coverLayer.addLayer(m);
-    }
     const sorted = newestFirst(photos.filter((p) => p.lat != null && p.lng != null));
     for (const p of sorted) {
       const pin = L.circleMarker([p.lat, p.lng], { radius: 5, color: "#fff", weight: 1.5, fillColor: cssVar("--primary"), fillOpacity: 1 });
@@ -253,10 +240,8 @@
       node.classList.toggle("visited", visited.has(name));
       node.style.display = z >= 6.25 || (visited.has(name) && z >= 5) ? "" : "none";
     }
-    // Covers on the overview, exact photo pins when zoomed in
+    // Exact photo pins only when zoomed in
     const zoomedIn = z >= 8;
-    if (zoomedIn && map.hasLayer(coverLayer)) map.removeLayer(coverLayer);
-    if (!zoomedIn && !map.hasLayer(coverLayer)) map.addLayer(coverLayer);
     if (zoomedIn && !map.hasLayer(pinLayer)) map.addLayer(pinLayer);
     if (!zoomedIn && map.hasLayer(pinLayer)) map.removeLayer(pinLayer);
   }
@@ -304,7 +289,7 @@
       if (toggle) toggle.onclick = () => saveManual(ticked ? manual.filter((n) => n !== selected) : [...manual, selected]);
       $("sideBody").replaceChildren(
         list.length ? grid(list) : el("p", { className: "empty", textContent: ticked ? "Đã đến, chưa có ảnh." : "Chưa có ảnh ở nơi này." }),
-        toggle);
+        ...(toggle ? [toggle] : []));
       return;
     }
     if (selected === OTHER) return showList(OTHER, newestFirst(photos.filter((p) => !p.province)));
@@ -468,11 +453,11 @@
     setImg($("viewerImg"), p);
     $("viewerImg").alt = p.title || "";
     const where = [p.place, p.province].filter(Boolean).join(", ");
-    $("viewerText").replaceChildren(
+    $("viewerText").replaceChildren(...[
       p.title ? el("p", {}, el("strong", { textContent: p.title })) : null,
       el("p", { className: "muted small", textContent: [where, fmtDate(photoDate(p)), p.camera, p.private ? "🔒 Chỉ mình xem" : ""].filter(Boolean).join(" · ") }),
       p.note ? el("p", { textContent: p.note }) : null,
-    );
+    ].filter(Boolean));
     $("viewerPrev").hidden = viewIndex <= 0;
     $("viewerNext").hidden = viewIndex >= viewList.length - 1;
     $("viewerTools").hidden = !admin;
