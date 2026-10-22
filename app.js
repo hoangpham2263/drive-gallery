@@ -200,6 +200,19 @@
     coverLayer = L.layerGroup().addTo(map);
     pinLayer = L.layerGroup();
 
+    // Button under +/− to go back to the whole country
+    const Home = L.Control.extend({
+      options: { position: "topleft" },
+      onAdd: () => {
+        const box = L.DomUtil.create("div", "leaflet-bar");
+        const a = L.DomUtil.create("a", "map-home", box);
+        Object.assign(a, { href: "#", title: "Về toàn cảnh Việt Nam", role: "button", innerHTML: "⌂" });
+        a.setAttribute("aria-label", "Về toàn cảnh Việt Nam");
+        L.DomEvent.on(a, "click", (e) => { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); map.flyToBounds(VN_BOUNDS, { padding: [10, 10], duration: 0.6 }); });
+        return box;
+      },
+    });
+    new Home().addTo(map);
     map.fitBounds(VN_BOUNDS, { padding: [10, 10] });
     map.setMaxBounds(L.latLngBounds([4, 96], [27, 121]));
     map.on("zoomend", updateLayers);
@@ -254,16 +267,10 @@
     drawMarkers();
   }
 
-  function flyTo(province) {
-    const f = geo.features.find((x) => x.properties.name === province);
-    if (f) map.flyToBounds(L.geoJSON(f).getBounds(), { padding: [30, 30], maxZoom: 8, duration: 0.6 });
-  }
-
   function selectProvince(name) {
     selected = name;
     layer.setStyle(styleFor);
     renderSide();
-    flyTo(name);
   }
 
   // ---------- photo tiles ----------
@@ -347,7 +354,6 @@
     ];
     showList(t.name, t.photos, head);
     history.replaceState(null, "", `#trip=${t.key}`);
-    flyTo(t.province);
     if (scroll) document.querySelector(".map-card").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -956,7 +962,6 @@
       selected = null;
       history.replaceState(null, "", location.pathname);
       renderAll();
-      map.flyToBounds(VN_BOUNDS, { padding: [10, 10], duration: 0.6 });
     };
     // Shared trip link: #trip=<key>
     const key = new URLSearchParams(location.hash.slice(1)).get("trip");

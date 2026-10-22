@@ -222,3 +222,4 @@ button:disabled { opacity: .5; cursor: default; }
   .sel-bar { width: calc(100% - 32px); display: grid; grid-template-columns: 1fr 1fr; }
   .sel-bar strong, .sel-bar select { grid-column: 1 / -1; width: 100%; }
 }
+.map-home { font-size: 18px; line-height: 30px !important; }
