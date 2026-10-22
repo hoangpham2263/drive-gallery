@@ -234,23 +234,28 @@
     window.addEventListener("resize", () => map.invalidateSize());
   }
 
+  // Small dots that grow a little on hover
+  const grow = (m) => m.on("mouseover", () => m.setRadius(4)).on("mouseout", () => m.setRadius(2.5));
+
   // One small pin per GPS photo
   function drawMarkers() {
     pinLayer.clearLayers();
     const sorted = newestFirst(photos.filter((p) => p.lat != null && p.lng != null));
     for (const p of sorted) {
-      const pin = L.circleMarker([p.lat, p.lng], { pane: "dots", radius: 5, color: "#fff", weight: 1.5, fillColor: cssVar("--primary"), fillOpacity: 1 });
+      const pin = L.circleMarker([p.lat, p.lng], { pane: "dots", radius: 2.5, color: "#fff", weight: 1, fillColor: cssVar("--primary"), fillOpacity: 1 });
       pin.bindTooltip([p.place, fmtDate(photoDate(p))].filter(Boolean).join(" · "), { className: "tip", direction: "top" });
       pin.on("click", () => openViewer(sorted, sorted.indexOf(p)));
+      grow(pin);
       pinLayer.addLayer(pin);
     }
     // Places visited: small ring, always visible
     placeLayer.clearLayers();
     for (const x of places) {
       if (x.lat == null || x.lng == null) continue;
-      const m = L.circleMarker([x.lat, x.lng], { pane: "dots", radius: 5, color: cssVar("--fg"), weight: 1.5, fillColor: cssVar("--bg"), fillOpacity: 1 });
+      const m = L.circleMarker([x.lat, x.lng], { pane: "dots", radius: 2.5, color: cssVar("--muted"), weight: 1, fillColor: cssVar("--bg"), fillOpacity: 1 });
       m.bindTooltip(x.name, { className: "tip", direction: "top" });
       if (x.province) m.on("click", () => selectProvince(x.province));
+      grow(m);
       placeLayer.addLayer(m);
     }
     updateLayers();
