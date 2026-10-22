@@ -262,3 +262,6 @@ select {
 .photo-info dt { color: var(--muted); }
 .photo-info dd { margin: 0; overflow-wrap: anywhere; }
 .leaflet-container:focus { outline: none; }
+
+/* Photo list scrolls on its own: reaching the end no longer drags the page along */
+.side-body { overscroll-behavior: contain; scrollbar-gutter: stable; padding-right: 2px; }
