@@ -138,12 +138,14 @@
     for (const t of trips) {
       t.key = `${slug(t.province)}-${t.start}`;
       const m = meta.trips[t.key] || {};
-      t.name = m.name || t.province;
+      t.places = [...new Set(t.photos.map((p) => p.place).filter(Boolean))];
+      // Named after the places visited (Tịnh Khê, Mộ Đức…), the province only when there is none
+      t.name = m.name || t.places.slice(0, 2).join(", ") || t.province;
       t.note = m.note || "";
       t.cover = t.photos.find((p) => p.id === m.cover) || t.photos[0];
-      t.places = [...new Set(t.photos.map((p) => p.place).filter(Boolean))];
     }
-    return trips.reverse();
+    // Most recent trip first
+    return trips.sort((a, b) => b.end.localeCompare(a.end));
   }
   const tripRange = (t) => {
     const a = new Date(t.start), b = new Date(t.end);
@@ -500,10 +502,12 @@
     $("trips").replaceChildren(...trips.map((t) => {
       const img = el("img", { alt: "", loading: "lazy" });
       setImg(img, t.cover, "thumb");
-      const b = el("button", { type: "button", className: "trip" }, img,
+      const latest = t === trips[0];
+      const b = el("button", { type: "button", className: latest ? "trip latest" : "trip" }, img,
+        latest ? el("span", { className: "trip-badge", textContent: "Gần nhất" }) : null,
         el("span", { className: "trip-info" },
           el("strong", { textContent: t.name }),
-          el("small", { textContent: `${tripRange(t)} · ${t.photos.length} ảnh` })));
+          el("small", { textContent: [t.name !== t.province ? t.province : "", tripRange(t), `${t.photos.length} ảnh`].filter(Boolean).join(" · ") })));
       b.onclick = () => openTrip(t);
       return b;
     }));
