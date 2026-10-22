@@ -255,6 +255,8 @@
   function selectProvince(name) {
     selected = name;
     layer.setStyle(styleFor);
+    // Selected province on top so its whole border shows
+    layer.eachLayer((l) => l.feature.properties.name === name && l.bringToFront());
     renderSide();
   }
 
