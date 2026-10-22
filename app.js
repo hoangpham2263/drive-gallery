@@ -288,13 +288,8 @@
       const list = newestFirst(groups.get(selected) || []);
       $("sideTitle").textContent = `${selected} · ${list.length} ảnh`;
       const ticked = manual.includes(selected);
-      const toggle = admin && provinces.includes(selected) && !list.length
-        ? el("button", { type: "button", className: ticked ? "" : "primary", textContent: ticked ? "Bỏ đánh dấu đã đến" : "✓ Đánh dấu đã đến" })
-        : null;
-      if (toggle) toggle.onclick = () => saveManual(ticked ? manual.filter((n) => n !== selected) : [...manual, selected]);
       $("sideBody").replaceChildren(
-        list.length ? grid(list) : el("p", { className: "empty", textContent: ticked ? "Đã đến, chưa có ảnh." : "Chưa có ảnh ở nơi này." }),
-        ...(toggle ? [toggle] : []));
+        list.length ? grid(list) : el("p", { className: "empty", textContent: ticked ? "Đã đến, chưa có ảnh." : "Chưa có ảnh ở nơi này." }));
       return;
     }
     if (selected === OTHER) return showList(OTHER, newestFirst(photos.filter((p) => !p.province)));
