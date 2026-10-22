@@ -8,7 +8,7 @@
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <link rel="stylesheet" href="style.css?v=6" />
+    <link rel="stylesheet" href="style.css?v=7" />
   </head>
   <body>
     <main class="wrap">
@@ -68,7 +68,7 @@
           <li>Bấm vào một tỉnh trên bản đồ (hoặc trong danh sách) để xem ảnh ở nơi đó.</li>
           <li>Bấm vào ảnh để xem lớn, dùng phím ← → để chuyển ảnh.</li>
           <li>Kéo bản đồ để di chuyển, cuộn hoặc chụm hai ngón để phóng to.</li>
-          <li>Chế độ quản lý: bấm "+ Thêm ảnh" hoặc kéo thả ảnh vào trang. Ảnh được lưu trên Google Drive theo thư mục Tỉnh / Tháng.</li>
+          <li>Chế độ quản lý: bấm "+ Thêm ảnh" hoặc kéo thả ảnh vào trang. Ảnh được lưu trên Google Drive theo thư mục Tỉnh / Năm.</li>
         </ol>
       </details>
 
@@ -79,16 +79,12 @@
     <dialog id="uploadDlg" class="dlg">
       <form method="dialog" class="dlg-box">
         <div class="dlg-head"><strong>Thêm ảnh</strong><button class="icon" value="cancel" aria-label="Đóng">✕</button></div>
-        <p class="muted small">Ảnh có GPS được gán tỉnh tự động. Ảnh không chọn tỉnh sẽ lưu vào mục Other.</p>
-        <div id="bulkBar" class="bulk" hidden>
-          <span class="small">Áp dụng cho tất cả ảnh:</span>
-          <select id="bulkProvince"></select>
-          <input id="bulkPlace" placeholder="Địa điểm" />
-          <input id="bulkDate" type="date" />
-          <label class="small check"><input id="bulkKeepGps" type="checkbox" checked /> Giữ nguyên ảnh có GPS</label>
-          <button id="bulkApply" class="primary" type="button">Áp dụng</button>
-        </div>
-        <div id="uploadList" class="up-list"></div>
+        <p id="upSummary" class="muted small"></p>
+        <label class="up-place" id="upPlaceRow">
+          <span class="small">Lưu ảnh không có GPS vào</span>
+          <select id="upProvince"></select>
+        </label>
+        <div id="uploadList" class="up-grid"></div>
         <div id="upProgress" class="up-progress" hidden>
           <div class="progress"><span id="upBar"></span></div>
           <span id="upText" class="muted small"></span>
@@ -131,6 +127,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script src="vendor/exifr.full.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
-    <script src="app.js?v=10"></script>
+    <script src="app.js?v=11"></script>
   </body>
 </html>

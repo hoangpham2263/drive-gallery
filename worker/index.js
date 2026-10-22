@@ -88,12 +88,12 @@ async function childFolder(env, parentId, name) {
   return id;
 }
 
-// Photos: <root>/<Tỉnh>/<YYYY-MM>/…  Thumbnails: <root>/_thumbs/…
+// Photos: <root>/<Tỉnh>/<YYYY>/…  Thumbnails: <root>/_thumbs/…
 async function photoFolder(env, province, takenAt) {
   const root = await folderId(env);
-  const month = /^\d{4}-\d{2}/.test(takenAt || "") ? takenAt.slice(0, 7) : "Không rõ thời gian";
+  const year = /^\d{4}/.test(takenAt || "") ? takenAt.slice(0, 4) : "Other";
   const place = await childFolder(env, root, province || "Other");
-  return childFolder(env, place, month);
+  return childFolder(env, place, year);
 }
 const thumbFolder = async (env) => childFolder(env, await folderId(env), "_thumbs");
 
@@ -297,9 +297,9 @@ async function handle(req, env, ctx) {
     const list = await readList(env);
     const item = list.find((p) => p.id === one[1]);
     if (!item) return json({ error: "Không tìm thấy ảnh." }, 404);
-    const before = `${item.province}|${(item.takenAt || "").slice(0, 7)}`;
+    const before = `${item.province}|${(item.takenAt || "").slice(0, 4)}`;
     Object.assign(item, cleanMeta(await req.json()));
-    if (`${item.province}|${(item.takenAt || "").slice(0, 7)}` !== before) {
+    if (`${item.province}|${(item.takenAt || "").slice(0, 4)}` !== before) {
       try { await moveFile(env, item.fileId, await photoFolder(env, item.province, item.takenAt)); } catch {}
     }
     await writeList(env, list, ctx);

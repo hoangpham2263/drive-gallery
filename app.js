@@ -488,40 +488,21 @@
     renderPending();
   }
 
-  // One choice for the whole batch instead of picking every photo
-  $("bulkApply").onclick = () => {
-    const province = $("bulkProvince").value, place = $("bulkPlace").value.trim(), date = $("bulkDate").value;
-    if (!province && !place && !date) return toast("Chọn tỉnh, địa điểm hoặc ngày để áp dụng");
-    const keep = $("bulkKeepGps").checked;
-    let n = 0;
-    for (const p of pending) {
-      if (p.done || (keep && p.lat != null)) continue;
-      if (province) p.province = province;
-      if (place) p.place = place;
-      if (date) p.takenAt = date;
-      n++;
-    }
-    renderPending();
-    toast(`✓ Đã áp dụng cho ${n} ảnh`);
-  };
-
+  // Simple review: every photo keeps its own date/GPS; one province for photos without GPS
   function renderPending() {
-    $("bulkBar").hidden = pending.length < 2;
-    if ($("bulkProvince").options.length < 2) provinceOptions($("bulkProvince"));
+    if ($("upProvince").options.length < 2) {
+      provinceOptions($("upProvince"));
+      $("upProvince").options[0].textContent = "Other (không chọn tỉnh)";
+    }
+    $("upProvince").value = "";
+    const noGps = pending.filter((p) => p.lat == null).length;
+    $("upSummary").textContent = `${pending.length} ảnh` + (pending.length - noGps ? ` · ${pending.length - noGps} ảnh có GPS (tự gán nơi)` : "") + (noGps ? ` · ${noGps} ảnh không có GPS` : "");
+    $("upPlaceRow").hidden = !noGps;
     $("uploadList").replaceChildren(...pending.map((p) => {
-      const sel = el("select");
-      provinceOptions(sel, p.province);
-      sel.onchange = () => (p.province = sel.value);
-      const date = el("input", { type: "date", value: p.takenAt });
-      date.onchange = () => (p.takenAt = date.value);
-      const place = el("input", { placeholder: "Địa điểm (vd: Hội An, Bà Nà)", value: p.place || "" });
-      place.oninput = () => (p.place = place.value);
-      const title = el("input", { placeholder: "Tiêu đề (không bắt buộc)" });
-      title.oninput = () => (p.title = title.value);
-      p.state = el("div", { className: "up-state full", textContent: p.lat != null ? "Có GPS" : p.province ? "Không có GPS" : "Không có GPS — chưa chọn tỉnh sẽ lưu vào Other" });
-      return el("div", { className: "up-row" },
+      p.box = el("div", { className: "up-item", title: [p.place, p.province, p.takenAt].filter(Boolean).join(" · ") },
         el("img", { src: p.preview, alt: "" }),
-        el("div", { className: "up-fields" }, sel, date, place, title, p.state));
+        el("span", { textContent: p.place || p.province || "" }));
+      return p.box;
     }));
     $("uploadGo").disabled = !pending.length;
   }
@@ -547,6 +528,9 @@
 
   $("uploadGo").onclick = async () => {
     const todo = pending.filter((p) => !p.done);
+    // Photos without GPS take the chosen province, or "Other" when none is chosen
+    const chosen = $("upProvince").value;
+    for (const p of todo) if (p.lat == null) p.province = chosen;
     $("uploadGo").disabled = true;
     const t0 = performance.now();
     // Overall progress: bytes sent across every photo + photos finished
@@ -562,27 +546,24 @@
     $("upProgress").hidden = false;
     $("upText").textContent = "Đang chuẩn bị thư mục trên Drive…";
     try {
-      const groups = [...new Map(todo.map((p) => [`${p.province}|${(p.takenAt || "").slice(0, 7)}`, { province: p.province, takenAt: p.takenAt }])).values()];
+      const groups = [...new Map(todo.map((p) => [`${p.province}|${(p.takenAt || "").slice(0, 4)}`, { province: p.province, takenAt: p.takenAt }])).values()];
       await api("/api/folders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ groups }) });
     } catch (err) { toast(err.message); }
     paint();
     // 1) files to Drive, several photos at once (full + thumbnail in parallel per photo)
     await pool(todo, UPLOAD_LIMIT, async (p) => {
-      p.state.className = "up-state full";
-      p.state.textContent = "Đang tải lên…";
       try {
-        const track = (key) => (n) => { sent.set(key, n); const pct = Math.round((((sent.get(p.name + "f") || 0) + (sent.get(p.name + "t") || 0)) / (p.full.blob.size + p.thumb.blob.size)) * 100); p.state.textContent = `Đang tải lên… ${pct}%`; paint(); };
+        const track = (key) => (n) => { sent.set(key, n); paint(); };
         const [fileId, thumbId] = await Promise.all([
           sendFile(p.full.blob, p.name, "image/jpeg", { province: p.province, takenAt: p.takenAt, place: p.place }, track(p.name + "f")),
           sendFile(p.thumb.blob, p.name.replace(/\.\w+$/, ".webp"), "image/webp", { kind: "thumb" }, track(p.name + "t")),
         ]);
         Object.assign(p, { fileId, thumbId });
         finished++;
-        p.state.textContent = "✓ Đã tải file";
         paint();
       } catch (err) {
-        p.state.className = "up-state full err";
-        p.state.textContent = err.message;
+        p.box.className = "up-item err";
+        p.box.title = err.message;
       }
     });
     // 2) add them all to the list in one request
@@ -599,9 +580,9 @@
           })) }),
         });
         photos.push(...added);
-        for (const p of uploaded) { p.done = true; p.state.className = "up-state full ok"; p.state.textContent = "✓ Đã tải lên"; }
+        for (const p of uploaded) { p.done = true; p.box.className = "up-item ok"; }
       } catch (err) {
-        for (const p of uploaded) { p.state.className = "up-state full err"; p.state.textContent = err.message; }
+        for (const p of uploaded) { p.box.className = "up-item err"; p.box.title = err.message; }
       }
     }
     renderAll();
