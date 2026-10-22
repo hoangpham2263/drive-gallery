@@ -421,7 +421,7 @@
       const spots = placesIn(selected);
       $("sideBody").replaceChildren(...[
         spots.length || admin ? placeBox(selected, spots) : null,
-        list.length ? grid(list) : el("p", { className: "empty", textContent: ticked ? "Đã đến, chưa có ảnh." : "Chưa có ảnh ở nơi này." }),
+        list.length ? grid(list) : ticked || spots.length ? null : el("p", { className: "empty", textContent: "Chưa có ảnh." }),
       ].filter(Boolean));
       return;
     }
@@ -820,7 +820,7 @@
     $("visitedList").replaceChildren(...provinces.map((n) => {
       const has = withPhotos.has(n);
       const box = el("input", { type: "checkbox", value: n, checked: has || manual.includes(n), disabled: has });
-      return el("label", { className: "vis-item", title: has ? "Đã có ảnh" : "" }, box, el("span", { textContent: n }), has ? el("small", { textContent: "có ảnh" }) : null);
+      return el("label", { className: "vis-item", title: has ? "Đã có ảnh" : "" }, box, el("span", { textContent: n }));
     }));
     $("visitedDlg").showModal();
   };
