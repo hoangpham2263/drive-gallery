@@ -520,13 +520,13 @@
     $("visitedBar").style.width = `${(visited.size / 34) * 100}%`;
     $("photoCount").textContent = photos.length ? `${photos.length} ảnh` : "";
     const items = [
-      [photos.length, "ảnh"],
-      [computeTrips().length, "chuyến đi"],
-      [`${visited.size}/34`, "tỉnh, thành phố"],
-      [places.length, "địa điểm đã đến"],
-      [plans.length, "nơi sắp đi"],
+      [photos.length, "Ảnh"],
+      [computeTrips().length, "Chuyến đi"],
+      [`${visited.size}/34`, "Tỉnh, thành phố"],
+      [places.length, "Địa điểm đã đến"],
+      [plans.length, "Nơi sắp đi"],
     ];
-    $("stats").replaceChildren(...items.map(([v, label]) => el("div", { className: "stat" }, el("strong", { textContent: v }), el("span", { textContent: label }))));
+    $("stats").replaceChildren(...items.map(([v, label]) => el("div", { className: "stat" }, el("span", { textContent: label }), el("strong", { textContent: v }))));
   }
 
   // ---------- timeline ----------
