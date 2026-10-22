@@ -41,6 +41,7 @@
           <div class="actions" id="adminActions" hidden>
             <button id="selectBtn" type="button">Chọn nhiều</button>
             <button id="visitedBtn" type="button">Nơi đã đi</button>
+            <button id="plansBtn" type="button">Sắp đi</button>
             <button id="addBtn" class="primary" type="button">+ Thêm ảnh</button>
           </div>
         </div>
@@ -60,14 +61,6 @@
       <section class="card" id="statsCard">
         <h2>Thống kê</h2>
         <div id="stats" class="stats"></div>
-      </section>
-
-      <section class="card" id="plansCard" hidden>
-        <div class="sec-head">
-          <h2>Sắp đi</h2>
-          <span id="planCount" class="muted small"></span>
-        </div>
-        <div id="plans" class="plans"></div>
       </section>
 
       <section class="card">
@@ -138,6 +131,14 @@
       </form>
     </dialog>
 
+    <!-- Places to go next -->
+    <dialog id="plansDlg" class="dlg">
+      <form method="dialog" class="dlg-box">
+        <div class="dlg-head"><strong>Sắp đi</strong><button class="icon" value="cancel" aria-label="Đóng">✕</button></div>
+        <div id="plans" class="plans"></div>
+      </form>
+    </dialog>
+
     <!-- Trip details (name, note) -->
     <dialog id="tripDlg" class="dlg">
       <form method="dialog" class="dlg-box" id="tripForm">
@@ -179,6 +180,6 @@
     <script src="vendor/exifr.full.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
-    <script src="app.js?v=41"></script>
+    <script src="app.js?v=42"></script>
   </body>
 </html>

@@ -337,8 +337,6 @@
     catch (err) { toast(err.message); }
   }
   function renderPlans() {
-    $("plansCard").hidden = !plans.length && !admin;
-    $("planCount").textContent = plans.length ? `${plans.length} nơi` : "";
     const chips = el("div", { className: "chip-row" }, ...plans.map((x) => {
       const chip = el("span", { className: "chip plan" }, el("span", { textContent: x.name }), x.province ? el("small", { textContent: x.province }) : null);
       if (admin) {
@@ -375,6 +373,8 @@
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); search(); } });
     $("plans").replaceChildren(...[plans.length ? chips : null, el("div", { className: "place-add" }, input, go), results].filter(Boolean));
   }
+
+  $("plansBtn").onclick = () => { renderPlans(); $("plansDlg").showModal(); };
 
   function placeBox(province, spots) {
     const chips = el("div", { className: "chip-row" }, ...spots.map((x) => {
