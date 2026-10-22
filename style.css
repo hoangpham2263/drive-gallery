@@ -124,6 +124,9 @@ button:disabled { opacity: .5; cursor: default; }
 .dlg-box { display: grid; gap: 12px; padding: 14px 16px; }
 .dlg-box p { margin: 0; }
 .dlg-head { display: flex; justify-content: space-between; align-items: center; }
+.bulk { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) 150px; gap: 6px; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--soft); }
+.bulk .check { grid-column: 1 / 4; display: flex; align-items: center; gap: 6px; }
+.bulk .check input { width: auto; height: auto; }
 .up-list { display: grid; gap: 8px; max-height: 60vh; overflow: auto; }
 .up-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px; border: 1px solid var(--border); border-radius: 10px; }
 .up-row img { width: 64px; height: 64px; object-fit: cover; border-radius: 6px; background: var(--soft); }
@@ -170,7 +173,8 @@ button:disabled { opacity: .5; cursor: default; }
 @media (max-width: 640px) {
   input, select, textarea { font-size: 16px !important; }
   .map { height: 460px; }
-  .up-fields, .edit { grid-template-columns: 1fr; }
+  .up-fields, .edit, .bulk { grid-template-columns: 1fr; }
+  .bulk .check { grid-column: auto; }
   .admin-bar { flex-wrap: wrap; }
   .admin-bar .actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
 }

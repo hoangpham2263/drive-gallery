@@ -482,7 +482,26 @@
     renderPending();
   }
 
+  // One choice for the whole batch instead of picking every photo
+  $("bulkApply").onclick = () => {
+    const province = $("bulkProvince").value, place = $("bulkPlace").value.trim(), date = $("bulkDate").value;
+    if (!province && !place && !date) return toast("Chọn tỉnh, địa điểm hoặc ngày để áp dụng");
+    const keep = $("bulkKeepGps").checked;
+    let n = 0;
+    for (const p of pending) {
+      if (p.done || (keep && p.lat != null)) continue;
+      if (province) p.province = province;
+      if (place) p.place = place;
+      if (date) p.takenAt = date;
+      n++;
+    }
+    renderPending();
+    toast(`✓ Đã áp dụng cho ${n} ảnh`);
+  };
+
   function renderPending() {
+    $("bulkBar").hidden = pending.length < 2;
+    if ($("bulkProvince").options.length < 2) provinceOptions($("bulkProvince"));
     $("uploadList").replaceChildren(...pending.map((p) => {
       const sel = el("select");
       provinceOptions(sel, p.province);
@@ -493,7 +512,7 @@
       place.oninput = () => (p.place = place.value);
       const title = el("input", { placeholder: "Tiêu đề (không bắt buộc)" });
       title.oninput = () => (p.title = title.value);
-      p.state = el("div", { className: "up-state full", textContent: p.lat != null ? "Có GPS" : "Không có GPS — chọn tỉnh" });
+      p.state = el("div", { className: "up-state full", textContent: p.lat != null ? "Có GPS" : p.province ? "Không có GPS" : "Không có GPS — chọn tỉnh" });
       return el("div", { className: "up-row" },
         el("img", { src: p.preview, alt: "" }),
         el("div", { className: "up-fields" }, sel, date, place, title, p.state));
