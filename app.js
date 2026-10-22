@@ -3,6 +3,7 @@
 (() => {
   const API = "https://memories-api.hoangpham2263.workers.dev";
   const ABROAD = "Nước ngoài";
+  const OTHER = "Other";
   const PALETTE = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa", "#fb923c", "#2dd4bf", "#f87171", "#818cf8", "#a3e635"];
   const ISLANDS = [
     { name: "Quần đảo Hoàng Sa", sub: "(Đà Nẵng)", lat: 16.5, lng: 112.0 },
@@ -185,16 +186,19 @@
     const rows = [...groups.entries()].filter(([n]) => n !== ABROAD).sort((a, b) => b[1].length - a[1].length);
     const abroad = groups.get(ABROAD);
     if (abroad) rows.push([ABROAD, abroad]);
+    // Photos with no place chosen are kept under "Other"
+    const other = photos.filter((p) => !p.province);
+    if (other.length) rows.push([OTHER, other]);
     if (!rows.length) {
       $("sideBody").replaceChildren(el("p", { className: "empty", textContent: "Chưa có ảnh nào." }));
       return;
     }
     $("sideBody").replaceChildren(...rows.map(([name, list]) => {
       const b = el("button", { type: "button", className: "prov" },
-        el("i", { style: `background:${name === ABROAD ? cssVar("--muted") : colorOf(name)}` }),
+        el("i", { style: `background:${name === ABROAD || name === OTHER ? cssVar("--muted") : colorOf(name)}` }),
         el("span", { textContent: name }),
         el("small", { textContent: `${list.length} ảnh` }));
-      b.onclick = () => (name === ABROAD ? showList(ABROAD, list) : selectProvince(name));
+      b.onclick = () => (name === ABROAD || name === OTHER ? showList(name, list) : selectProvince(name));
       return b;
     }));
   }
@@ -351,6 +355,8 @@
       ? `Đang quản lý · Ảnh lưu vào Google Drive: ${status.email || "đã kết nối"}`
       : "Đang quản lý · Chưa kết nối Google Drive";
     $("connectBtn").textContent = status.connected ? "Đổi tài khoản Drive" : "Kết nối Drive";
+    $("driveLink").hidden = !status.folder;
+    if (status.folder) $("driveLink").href = `https://drive.google.com/drive/folders/${status.folder}`;
   }
 
   async function checkAdmin() {
@@ -512,7 +518,7 @@
       place.oninput = () => (p.place = place.value);
       const title = el("input", { placeholder: "Tiêu đề (không bắt buộc)" });
       title.oninput = () => (p.title = title.value);
-      p.state = el("div", { className: "up-state full", textContent: p.lat != null ? "Có GPS" : p.province ? "Không có GPS" : "Không có GPS — chọn tỉnh" });
+      p.state = el("div", { className: "up-state full", textContent: p.lat != null ? "Có GPS" : p.province ? "Không có GPS" : "Không có GPS — chưa chọn tỉnh sẽ lưu vào Other" });
       return el("div", { className: "up-row" },
         el("img", { src: p.preview, alt: "" }),
         el("div", { className: "up-fields" }, sel, date, place, title, p.state));
@@ -541,8 +547,6 @@
 
   $("uploadGo").onclick = async () => {
     const todo = pending.filter((p) => !p.done);
-    const missing = todo.filter((p) => !p.province);
-    if (missing.length && !confirm(`${missing.length} ảnh chưa chọn tỉnh, vẫn tải lên?`)) return;
     $("uploadGo").disabled = true;
     const t0 = performance.now();
     // Overall progress: bytes sent across every photo + photos finished

@@ -92,7 +92,7 @@ async function childFolder(env, parentId, name) {
 async function photoFolder(env, province, takenAt) {
   const root = await folderId(env);
   const month = /^\d{4}-\d{2}/.test(takenAt || "") ? takenAt.slice(0, 7) : "Không rõ thời gian";
-  const place = await childFolder(env, root, province || "Chưa rõ nơi");
+  const place = await childFolder(env, root, province || "Other");
   return childFolder(env, place, month);
 }
 const thumbFolder = async (env) => childFolder(env, await folderId(env), "_thumbs");
@@ -199,7 +199,14 @@ async function handle(req, env, ctx) {
   }
 
   if (path === "/api/status" && req.method === "GET") {
-    return json({ admin: isAdmin(req, env), connected: !!(await env.MEM.get("refresh_token")), email: await env.MEM.get("drive_email") });
+    const admin = isAdmin(req, env);
+    return json({
+      admin,
+      connected: !!(await env.MEM.get("refresh_token")),
+      email: await env.MEM.get("drive_email"),
+      // Drive folder link only for the owner
+      folder: admin ? await env.MEM.get("folder_id") : null,
+    });
   }
 
   // Image proxy: thumbnails and full-size, cached at the edge

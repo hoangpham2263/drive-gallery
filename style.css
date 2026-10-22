@@ -76,6 +76,8 @@ button:disabled { opacity: .5; cursor: default; }
 .admin-dot { width: 8px; height: 8px; border-radius: 50%; background: #16a34a; flex: none; }
 .admin-bar.warn .admin-dot { background: var(--warn); }
 .admin-text { flex: 1; min-width: 0; }
+.btn { display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--fg); font-size: 14px; text-decoration: none; white-space: nowrap; }
+.btn:hover { background: var(--soft); }
 
 /* Map */
 .map-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
@@ -177,4 +179,5 @@ button:disabled { opacity: .5; cursor: default; }
   .bulk .check { grid-column: auto; }
   .admin-bar { flex-wrap: wrap; }
   .admin-bar .actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .admin-bar .actions .btn { grid-column: 1 / -1; }
 }
