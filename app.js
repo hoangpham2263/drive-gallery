@@ -929,10 +929,8 @@
 
   // Simple review: every photo keeps its own date/GPS; one province for photos without GPS
   function renderPending(skipped = 0) {
-    const noGps = pending.filter((p) => p.lat == null).length;
     $("upSummary").textContent = !pending.length ? (skipped ? "Tất cả ảnh đã có trong album." : "") : `${pending.length} ảnh`
-      + (skipped ? ` · bỏ qua ${skipped} ảnh trùng` : "")
-      + (noGps < pending.length ? " · không chọn địa điểm thì lưu theo GPS của ảnh" : "");
+      + (skipped ? ` · bỏ qua ${skipped} ảnh trùng` : "");
     $("uploadList").replaceChildren(...pending.map((p) => {
       p.box = el("div", { className: "up-item", title: [p.place, p.province, p.takenAt].filter(Boolean).join(" · ") },
         el("img", { src: p.preview, alt: "" }),

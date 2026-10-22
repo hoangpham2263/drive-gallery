@@ -252,7 +252,7 @@ select {
 
 /* Upload drop zone */
 .dropzone { display: grid; gap: 4px; place-items: center; padding: 28px 16px; text-align: center; border: 1px dashed var(--border); border-radius: 10px; background: var(--soft); cursor: pointer; transition: border-color .15s, background .15s; }
-.dropzone strong { font-size: 14px; font-weight: 500; }
+.dropzone { color: var(--muted); font-size: 14px; }
 .dropzone:hover, .dropzone:focus-visible, .dropzone.over { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 6%, var(--bg)); outline: none; }
 .up-grid:empty { display: none; }
 
