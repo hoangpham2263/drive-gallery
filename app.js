@@ -239,7 +239,7 @@
       const node = m.getElement();
       if (!node) continue;
       node.classList.toggle("visited", visited.has(name));
-      node.style.display = z >= 6.25 || (visited.has(name) && z >= 5) ? "" : "none";
+      node.style.display = z >= 6.25 ? "" : "none"; // overview stays clean, names on hover
     }
     // Exact photo pins only when zoomed in
     const zoomedIn = z >= 8;
