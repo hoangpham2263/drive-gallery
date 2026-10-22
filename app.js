@@ -10,7 +10,8 @@
     { name: "Quần đảo Hoàng Sa", sub: "(Đà Nẵng)", lat: 16.5, lng: 112.0 },
     { name: "Quần đảo Trường Sa", sub: "(Khánh Hòa)", lat: 9.6, lng: 114.2 },
   ];
-  const VN_BOUNDS = [[8.2, 102.1], [23.4, 115.5]];
+  // On phones the islands would shrink the mainland too much, so the default view stops a bit east of the coast
+  const VN_BOUNDS = matchMedia("(max-width: 640px)").matches ? [[8.4, 102.1], [23.4, 112.6]] : [[8.2, 102.1], [23.4, 115.5]];
 
   const $ = (id) => document.getElementById(id);
   const store = {
