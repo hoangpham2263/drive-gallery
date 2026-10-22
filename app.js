@@ -175,8 +175,9 @@
       style: styleFor,
       onEachFeature: (f, lyr) => {
         lyr.on("click", () => selectProvince(f.properties.name));
-        lyr.on("mouseover", () => lyr.setStyle({ weight: 2, color: cssVar("--fg") }));
-        lyr.on("mouseout", () => layer.resetStyle(lyr));
+        // Hovered province on top so neighbours don't cover half of its border
+        lyr.on("mouseover", () => { lyr.setStyle({ weight: 2, color: cssVar("--fg") }); lyr.bringToFront(); });
+        lyr.on("mouseout", () => { layer.resetStyle(lyr); raiseSelected(); });
         lyr.bindTooltip(() => {
           const n = byProvince().get(f.properties.name)?.length || 0;
           return `${f.properties.name}${n ? ` · ${n} ảnh` : manual.includes(f.properties.name) ? " · Đã đến" : ""}`;
@@ -252,11 +253,13 @@
     drawMarkers();
   }
 
+  // Selected province on top so its whole border shows
+  const raiseSelected = () => layer.eachLayer((l) => l.feature.properties.name === selected && l.bringToFront());
+
   function selectProvince(name) {
     selected = name;
     layer.setStyle(styleFor);
-    // Selected province on top so its whole border shows
-    layer.eachLayer((l) => l.feature.properties.name === name && l.bringToFront());
+    raiseSelected();
     renderSide();
   }
 
