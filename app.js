@@ -208,11 +208,6 @@
         // Hovered province on top so neighbours don't cover half of its border
         lyr.on("mouseover", () => { lyr.setStyle({ weight: 1.25, color: cssVar("--primary") }); lyr.bringToFront(); });
         lyr.on("mouseout", () => { layer.resetStyle(lyr); raiseSelected(); });
-        lyr.bindTooltip(() => {
-          const n = byProvince().get(f.properties.name)?.length || 0;
-          const spots = placesIn(f.properties.name).map((x) => x.name).join(", ");
-          return `${f.properties.name}${n ? ` · ${n} ảnh` : visitedSet().has(f.properties.name) ? " · Đã đến" : ""}${spots ? `<br><small>${spots}</small>` : ""}`;
-        }, { sticky: true, className: "tip", direction: "top" });
       },
     }).addTo(map);
 
