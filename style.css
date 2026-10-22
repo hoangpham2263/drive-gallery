@@ -35,7 +35,7 @@ body {
 a { color: var(--primary); }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
-h2 { margin: 0; font-size: 16px; font-weight: 600; }
+h2 { margin: 0; font-size: 16px; font-weight: 500; }
 
 /* Container like Tailwind's */
 .wrap { width: 100%; max-width: 1280px; margin: 0 auto; padding: 32px 16px 48px; display: grid; gap: 16px; }
@@ -44,7 +44,7 @@ h2 { margin: 0; font-size: 16px; font-weight: 600; }
 
 .top { display: flex; align-items: center; gap: 12px; }
 .top-text { flex: 1; min-width: 0; }
-h1 { margin: 0; font-size: 26px; line-height: 1.25; font-weight: 600; }
+h1 { margin: 0; font-size: 26px; line-height: 1.25; font-weight: 500; }
 .brand img { display: block; border-radius: 10px; }
 .back { padding: 6px 10px; border-radius: 999px; font-size: 13px; text-decoration: none; white-space: nowrap; }
 .back:hover { background: var(--soft); }
@@ -111,7 +111,7 @@ button:disabled { opacity: .5; cursor: default; }
 
 .timeline { display: grid; gap: 16px; }
 .tl-month { display: grid; gap: 8px; }
-.tl-month h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.tl-month h3 { margin: 0; font-size: 14px; font-weight: 500; }
 .tl-month h3 small { font-weight: 400; color: var(--muted); }
 .timeline .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 .tl-day { display: grid; gap: 6px; }
@@ -189,7 +189,7 @@ button:disabled { opacity: .5; cursor: default; }
 /* Stats */
 .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .stat { display: grid; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--soft); }
-.stat strong { font-size: 18px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat strong { font-size: 18px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stat span { font-size: 13px; color: var(--muted); }
 
 /* Trips */
@@ -280,3 +280,6 @@ select {
 .settings-list { display: grid; gap: 8px; }
 .settings-list > * { width: 100%; justify-content: flex-start; }
 #logoutBtn { color: var(--warn); }
+
+/* Light type: nothing heavier than 500 */
+strong, b, th, summary, .dlg-head strong { font-weight: 500; }
