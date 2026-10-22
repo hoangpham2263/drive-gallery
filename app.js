@@ -181,8 +181,26 @@
   }
 
   function initMap() {
-    // Fixed view of the whole country: no zoom, no panning
-    map = L.map("map", { zoomControl: false, attributionControl: false, zoomSnap: 0.25, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false, boxZoom: false, keyboard: false });
+    map = L.map("map", { zoomControl: false, attributionControl: false, zoomSnap: 0.25, minZoom: 4.5, maxZoom: 13 });
+    // Zoom in / out / whole country, styled like the site's buttons
+    const Zoom = L.Control.extend({
+      options: { position: "topleft" },
+      onAdd: () => {
+        const box = L.DomUtil.create("div", "map-ctrl");
+        const btn = (html, title, fn) => {
+          const b = L.DomUtil.create("button", "", box);
+          Object.assign(b, { type: "button", innerHTML: html, title });
+          b.setAttribute("aria-label", title);
+          L.DomEvent.on(b, "click", (e) => { L.DomEvent.stop(e); fn(); });
+        };
+        btn("+", "Phóng to", () => map.zoomIn());
+        btn("−", "Thu nhỏ", () => map.zoomOut());
+        btn('<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>', "Về toàn cảnh", () => map.flyToBounds(VN_BOUNDS, { padding: [10, 10], duration: 0.6 }));
+        L.DomEvent.disableClickPropagation(box);
+        return box;
+      },
+    });
+    new Zoom().addTo(map);
     layer = L.geoJSON(geo, {
       style: styleFor,
       onEachFeature: (f, lyr) => {
@@ -215,7 +233,8 @@
     placeLayer = L.layerGroup().addTo(map);
 
     map.fitBounds(VN_BOUNDS, { padding: [10, 10] });
-    window.addEventListener("resize", () => { map.invalidateSize(); map.fitBounds(VN_BOUNDS, { padding: [10, 10] }); });
+    map.setMaxBounds(L.latLngBounds([4, 96], [27, 121]));
+    window.addEventListener("resize", () => map.invalidateSize());
   }
 
   // One small pin per GPS photo
