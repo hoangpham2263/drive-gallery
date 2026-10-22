@@ -20,6 +20,7 @@
 
   let photos = [];
   let manual = []; // provinces ticked as visited without photos
+  let places = []; // specific places visited: { name, province, lat, lng }
   let meta = { trips: {}, covers: {} }; // trip names/notes/covers, province covers
   let geo = null;
   let provinces = []; // names, sorted
@@ -28,7 +29,7 @@
   let admin = false;
   let selecting = false;
   const picked = new Set();
-  let map, layer, pinLayer;
+  let map, layer, pinLayer, placeLayer;
   const labels = {};
 
   // ---------- helpers ----------
@@ -104,7 +105,16 @@
         if (inRing(lng, lat, poly[0]) && !poly.slice(1).some((hole) => inRing(lng, lat, hole))) return f.properties.name;
       }
     }
-    return null;
+    // Coast and islands: the simplified borders miss some points, take the nearest province within ~30 km
+    let best = null, bestD = 0.3 ** 2;
+    for (const f of geo.features) {
+      const polys = f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates;
+      for (const poly of polys) for (const [x, y] of poly[0]) {
+        const d = (x - lng) ** 2 + (y - lat) ** 2;
+        if (d < bestD) { bestD = d; best = f.properties.name; }
+      }
+    }
+    return best;
   }
   const labelOf = (name) => geo.features.find((f) => f.properties.name === name)?.properties.label; // [lng, lat]
 
@@ -154,12 +164,13 @@
     const i = provinces.indexOf(name);
     return PALETTE[(i < 0 ? 0 : i) % PALETTE.length];
   }
-  // Visited = has photos, or ticked by hand
-  const visitedSet = () => new Set([...byProvince().keys(), ...manual].filter((n) => provinces.includes(n)));
+  const placesIn = (province) => places.filter((x) => x.province === province);
+  // Visited = has photos, a pinned place, or ticked by hand
+  const visitedSet = () => new Set([...byProvince().keys(), ...manual, ...places.map((x) => x.province)].filter((n) => provinces.includes(n)));
 
   function styleFor(feature) {
     const hasPhotos = byProvince().has(feature.properties.name);
-    const visited = hasPhotos || manual.includes(feature.properties.name);
+    const visited = hasPhotos || visitedSet().has(feature.properties.name);
     const active = feature.properties.name === selected;
     return {
       color: active ? cssVar("--primary") : cssVar("--bg"),
@@ -180,7 +191,8 @@
         lyr.on("mouseout", () => { layer.resetStyle(lyr); raiseSelected(); });
         lyr.bindTooltip(() => {
           const n = byProvince().get(f.properties.name)?.length || 0;
-          return `${f.properties.name}${n ? ` · ${n} ảnh` : manual.includes(f.properties.name) ? " · Đã đến" : ""}`;
+          const spots = placesIn(f.properties.name).map((x) => x.name).join(", ");
+          return `${f.properties.name}${n ? ` · ${n} ảnh` : visitedSet().has(f.properties.name) ? " · Đã đến" : ""}${spots ? `<br><small>${spots}</small>` : ""}`;
         }, { sticky: true, className: "tip", direction: "top" });
       },
     }).addTo(map);
@@ -199,6 +211,7 @@
       }).addTo(map);
     }
     pinLayer = L.layerGroup();
+    placeLayer = L.layerGroup().addTo(map);
 
     // Button under +/− to go back to the whole country
     const Home = L.Control.extend({
@@ -228,6 +241,15 @@
       pin.bindTooltip([p.place, fmtDate(photoDate(p))].filter(Boolean).join(" · "), { className: "tip", direction: "top" });
       pin.on("click", () => openViewer(sorted, sorted.indexOf(p)));
       pinLayer.addLayer(pin);
+    }
+    // Places visited: small ring, always visible
+    placeLayer.clearLayers();
+    for (const x of places) {
+      if (x.lat == null || x.lng == null) continue;
+      const m = L.circleMarker([x.lat, x.lng], { radius: 4, color: cssVar("--fg"), weight: 1.5, fillColor: cssVar("--bg"), fillOpacity: 1 });
+      m.bindTooltip(x.name, { className: "tip", direction: "top" });
+      if (x.province) m.on("click", () => selectProvince(x.province));
+      placeLayer.addLayer(m);
     }
     updateLayers();
   }
@@ -287,27 +309,30 @@
     if (selected && provinces.concat(ABROAD).includes(selected)) {
       const list = newestFirst(groups.get(selected) || []);
       $("sideTitle").textContent = `${selected} · ${list.length} ảnh`;
-      const ticked = manual.includes(selected);
-      $("sideBody").replaceChildren(
-        list.length ? grid(list) : el("p", { className: "empty", textContent: ticked ? "Đã đến, chưa có ảnh." : "Chưa có ảnh ở nơi này." }));
+      const ticked = visitedSet().has(selected);
+      const spots = placesIn(selected);
+      $("sideBody").replaceChildren(...[
+        spots.length ? el("div", { className: "chip-row" }, ...spots.map((x) => el("span", { className: "chip", textContent: x.name }))) : null,
+        list.length ? grid(list) : el("p", { className: "empty", textContent: ticked ? "Đã đến, chưa có ảnh." : "Chưa có ảnh ở nơi này." }),
+      ].filter(Boolean));
       return;
     }
     if (selected === OTHER) return showList(OTHER, newestFirst(photos.filter((p) => !p.province)));
     selected = null;
     $("sideTitle").textContent = "Nơi đã đến";
     const rows = [...groups.entries()].filter(([n]) => n !== ABROAD).sort((a, b) => b[1].length - a[1].length);
-    for (const n of manual) if (!groups.has(n)) rows.push([n, []]);
+    for (const n of visitedSet()) if (!groups.has(n)) rows.push([n, []]);
     if (groups.get(ABROAD)) rows.push([ABROAD, groups.get(ABROAD)]);
     const other = photos.filter((p) => !p.province);
     if (other.length) rows.push([OTHER, other]);
-    if (!rows.length) return $("sideBody").replaceChildren(el("p", { className: "empty", textContent: "Chưa có ảnh nào." }));
+    if (!rows.length) return $("sideBody").replaceChildren(el("p", { className: "empty", textContent: "Chưa có nơi nào." }));
     $("sideBody").replaceChildren(...rows.map(([name, list]) => {
       const cover = name === OTHER ? null : coverOf(name);
       const icon = cover ? el("img", { className: "prov-cover", alt: "" }) : el("i", { style: `background:${name === OTHER || name === ABROAD ? cssVar("--muted") : colorOf(name)}` });
       if (cover) setImg(icon, cover, "thumb");
       const b = el("button", { type: "button", className: "prov" }, icon,
         el("span", { textContent: name }),
-        el("small", { textContent: list.length ? `${list.length} ảnh` : "Đã đến" }));
+        el("small", { textContent: list.length ? `${list.length} ảnh` : placesIn(name).length ? `${placesIn(name).length} địa điểm` : "Đã đến" }));
       b.onclick = () => (name === OTHER ? showList(OTHER, newestFirst(list)) : selectProvince(name));
       return b;
     }));
@@ -645,14 +670,14 @@
 
   // ---------- backup ----------
   $("backupJson").onclick = () => {
-    const data = { exportedAt: new Date().toISOString(), photos, visited: manual, meta };
+    const data = { exportedAt: new Date().toISOString(), photos, visited: manual, places, meta };
     download(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), `memories-${new Date().toISOString().slice(0, 10)}.json`);
   };
   $("backupZip").onclick = async () => {
     if (!window.JSZip) return toast("Đang tải bộ nén ZIP, thử lại sau vài giây");
     if (!photos.length) return toast("Chưa có ảnh để tải");
     const zip = new JSZip();
-    zip.file("memories.json", JSON.stringify({ photos, visited: manual, meta }, null, 2));
+    zip.file("memories.json", JSON.stringify({ photos, visited: manual, places, meta }, null, 2));
     let done = 0;
     $("backupZip").disabled = true;
     await pool(photos, 4, async (p) => {
@@ -676,7 +701,52 @@
       toast("✓ Đã lưu nơi đã đến");
     } catch (err) { toast(err.message); }
   }
+  // Places draft while the dialog is open
+  let draft = [];
+  function renderDraft() {
+    $("placeList").replaceChildren(...draft.map((x, i) => {
+      const del = el("button", { type: "button", textContent: "✕", title: "Bỏ" });
+      del.onclick = () => { draft.splice(i, 1); renderDraft(); };
+      return el("span", { className: "chip" }, el("span", { textContent: x.name }), el("small", { textContent: x.province || OTHER }), del);
+    }));
+  }
+  // Free OpenStreetMap search (Photon), limited to Vietnam
+  async function searchPlace() {
+    const q = $("placeQuery").value.trim();
+    if (!q) return;
+    $("placeResults").replaceChildren(el("p", { className: "muted small", textContent: "Đang tìm…" }));
+    let found = [];
+    try {
+      const data = await (await fetch(`https://photon.komoot.io/api/?limit=6&bbox=102,8,110,23.5&q=${encodeURIComponent(q)}`)).json();
+      found = data.features.map((f) => {
+        const [lng, lat] = f.geometry.coordinates, pr = f.properties;
+        return { lat, lng, label: [pr.name, pr.district || pr.city, pr.state].filter(Boolean).join(", ") };
+      });
+    } catch {}
+    const add = (lat, lng) => {
+      draft.push({ name: q, lat, lng, province: lat != null ? provinceAt(lat, lng) || "" : "" });
+      $("placeQuery").value = "";
+      $("placeResults").replaceChildren();
+      renderDraft();
+    };
+    $("placeResults").replaceChildren(...[
+      ...found.map((r) => {
+        const b = el("button", { type: "button" }, el("span", { textContent: r.label }), el("small", { textContent: `→ ${provinceAt(r.lat, r.lng) || OTHER}` }));
+        b.onclick = () => add(r.lat, r.lng);
+        return b;
+      }),
+      found.length ? null : el("p", { className: "muted small", textContent: "Không tìm thấy, thử gõ rõ hơn (vd: Mũi Né Phan Thiết)." }),
+      // Keep the name without a pin when the search has no good match
+      (() => { const b = el("button", { type: "button", className: "link", textContent: `Thêm "${q}" không ghim vị trí` }); b.onclick = () => add(null, null); return b; })(),
+    ].filter(Boolean));
+  }
+  $("placeSearch").onclick = searchPlace;
+  $("placeQuery").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); searchPlace(); } });
+
   $("visitedBtn").onclick = () => {
+    draft = places.map((x) => ({ ...x }));
+    renderDraft();
+    $("placeResults").replaceChildren();
     const withPhotos = byProvince();
     $("visitedList").replaceChildren(...provinces.map((n) => {
       const has = withPhotos.has(n);
@@ -686,6 +756,8 @@
     $("visitedDlg").showModal();
   };
   $("visitedSave").onclick = async () => {
+    try { places = await api("/api/places", jsonBody("PUT", { places: draft })); }
+    catch (err) { return toast(err.message); }
     await saveManual([...$("visitedList").querySelectorAll("input:checked:not(:disabled)")].map((x) => x.value));
     $("visitedDlg").close();
   };
@@ -934,10 +1006,11 @@
     provinceOptions($("selProvince"), "", "Chọn tỉnh…");
     initMap();
     try {
-      [photos, manual, meta] = await Promise.all([
+      [photos, manual, meta, places] = await Promise.all([
         api("/api/photos"),
         api("/api/visited").catch(() => []),
         api("/api/meta").catch(() => ({ trips: {}, covers: {} })),
+        api("/api/places").catch(() => []),
       ]);
     } catch (err) {
       toast(`Không tải được ảnh: ${err.message}`);

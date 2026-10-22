@@ -211,6 +211,11 @@ async function handle(req, env, ctx) {
     return json((await env.MEM.get("visited", "json")) || [], 200, { "cache-control": "no-store" });
   }
 
+  // Specific places visited (Núi Bà Đen, Mũi Né…), pinned on the map
+  if (path === "/api/places" && req.method === "GET") {
+    return json((await env.MEM.get("places", "json")) || [], 200, { "cache-control": "no-store" });
+  }
+
   if (path === "/api/status" && req.method === "GET") {
     const admin = isAdmin(req, env);
     return json({
@@ -248,6 +253,19 @@ async function handle(req, env, ctx) {
     const { provinces = [] } = await req.json();
     const clean = [...new Set(provinces.map((x) => String(x).slice(0, 60)).filter(Boolean))].slice(0, 100);
     await env.MEM.put("visited", JSON.stringify(clean));
+    return json(clean);
+  }
+
+  if (path === "/api/places" && req.method === "PUT") {
+    const { places = [] } = await req.json();
+    const num = (v) => (Number.isFinite(+v) && v !== null && v !== "" ? +v : null);
+    const clean = places.slice(0, 300).map((x) => ({
+      name: String(x.name || "").slice(0, 80),
+      province: String(x.province || "").slice(0, 60),
+      lat: num(x.lat),
+      lng: num(x.lng),
+    })).filter((x) => x.name);
+    await env.MEM.put("places", JSON.stringify(clean));
     return json(clean);
   }
 
