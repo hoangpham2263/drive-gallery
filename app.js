@@ -181,7 +181,8 @@
   }
 
   function initMap() {
-    map = L.map("map", { zoomControl: true, attributionControl: false, zoomSnap: 0.25, minZoom: 4.5, maxZoom: 13 });
+    // Fixed view of the whole country: no zoom, no panning
+    map = L.map("map", { zoomControl: false, attributionControl: false, zoomSnap: 0.25, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false, boxZoom: false, keyboard: false });
     layer = L.geoJSON(geo, {
       style: styleFor,
       onEachFeature: (f, lyr) => {
@@ -210,29 +211,14 @@
         icon: L.divIcon({ className: "island-label", html: `<span><b></b>${is.name}<br>${is.sub}</span>`, iconSize: [0, 0] }),
       }).addTo(map);
     }
-    pinLayer = L.layerGroup();
+    pinLayer = L.layerGroup().addTo(map);
     placeLayer = L.layerGroup().addTo(map);
 
-    // Button under +/− to go back to the whole country
-    const Home = L.Control.extend({
-      options: { position: "topleft" },
-      onAdd: () => {
-        const box = L.DomUtil.create("div", "leaflet-bar");
-        const a = L.DomUtil.create("a", "map-home", box);
-        Object.assign(a, { href: "#", title: "Về toàn cảnh Việt Nam", role: "button", innerHTML: "⌂" });
-        a.setAttribute("aria-label", "Về toàn cảnh Việt Nam");
-        L.DomEvent.on(a, "click", (e) => { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); map.flyToBounds(VN_BOUNDS, { padding: [10, 10], duration: 0.6 }); });
-        return box;
-      },
-    });
-    new Home().addTo(map);
     map.fitBounds(VN_BOUNDS, { padding: [10, 10] });
-    map.setMaxBounds(L.latLngBounds([4, 96], [27, 121]));
-    map.on("zoomend", updateLayers);
-    window.addEventListener("resize", () => map.invalidateSize());
+    window.addEventListener("resize", () => { map.invalidateSize(); map.fitBounds(VN_BOUNDS, { padding: [10, 10] }); });
   }
 
-  // One small pin per GPS photo, shown once zoomed in
+  // One small pin per GPS photo
   function drawMarkers() {
     pinLayer.clearLayers();
     const sorted = newestFirst(photos.filter((p) => p.lat != null && p.lng != null));
@@ -255,7 +241,6 @@
   }
 
   function updateLayers() {
-    const z = map.getZoom();
     const visited = visitedSet();
     for (const [name, m] of Object.entries(labels)) {
       const node = m.getElement();
@@ -263,10 +248,6 @@
       node.classList.toggle("visited", visited.has(name));
       node.style.display = "";
     }
-    // Exact photo pins only when zoomed in
-    const zoomedIn = z >= 8;
-    if (zoomedIn && !map.hasLayer(pinLayer)) map.addLayer(pinLayer);
-    if (!zoomedIn && map.hasLayer(pinLayer)) map.removeLayer(pinLayer);
   }
 
   function refreshMap() {
