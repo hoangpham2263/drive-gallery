@@ -152,9 +152,6 @@ button:disabled { opacity: .5; cursor: default; }
 .viewer-nav.next { right: 16px; }
 .viewer-info { width: min(720px, 100%); margin: 0 auto; padding: 12px 14px; border-radius: 12px; background: var(--bg); font-size: 14px; display: grid; gap: 10px; }
 .viewer-info p { margin: 0; }
-.edit { display: grid; grid-template-columns: minmax(0, 1fr) 180px 150px; gap: 6px; }
-.edit [name=place] { grid-column: 1 / -1; }
-.edit textarea, .edit .actions { grid-column: 1 / -1; }
 
 /* How it works */
 .howto { border: 1px solid var(--border); border-radius: 14px; padding: 0 16px; font-size: 14px; }

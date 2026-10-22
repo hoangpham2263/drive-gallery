@@ -584,14 +584,7 @@
     $("viewerPrev").hidden = viewIndex <= 0;
     $("viewerNext").hidden = viewIndex >= viewList.length - 1;
     $("viewerTools").hidden = !admin;
-    $("editForm").hidden = !admin;
     if (admin) {
-      const f = $("editForm");
-      f.title.value = p.title || "";
-      f.province.value = p.province || "";
-      f.place.value = p.place || "";
-      f.takenAt.value = (photoDate(p) || "").slice(0, 10);
-      f.note.value = p.note || "";
       $("coverProvince").hidden = !p.province;
       $("coverTrip").hidden = !computeTrips().some((t) => t.photos.includes(p));
       $("togglePrivate").textContent = p.private ? "Công khai ảnh này" : "Chỉ mình xem";
@@ -633,16 +626,6 @@
     }
   };
 
-  $("editForm").onsubmit = async (e) => {
-    e.preventDefault();
-    const f = e.target;
-    try {
-      applyUpdate(await api(`/api/photos/${current().id}`, jsonBody("PATCH", { title: f.title.value, province: f.province.value, place: f.place.value, takenAt: f.takenAt.value, note: f.note.value })));
-      renderAll();
-      showViewer();
-      toast("✓ Đã lưu");
-    } catch (err) { toast(err.message); }
-  };
   $("deleteBtn").onclick = async () => {
     const p = current();
     if (!confirm("Xóa ảnh này khỏi bản đồ và Google Drive?")) return;
@@ -1094,7 +1077,6 @@
   async function start() {
     geo = await (await fetch("vn-34.json")).json();
     provinces = geo.features.map((f) => f.properties.name).sort((a, b) => a.localeCompare(b, "vi"));
-    provinceOptions($("editForm").province);
     provinceOptions($("selProvince"), "", "Chọn tỉnh…");
     initMap();
     try {
