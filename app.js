@@ -914,7 +914,7 @@
     let skipped = 0, done = 0;
     const note = $("upSummary");
     note.textContent = `Đang đọc ${files.length} ảnh…`;
-    const ready = await pool(files, Math.max(2, Math.min(4, navigator.hardwareConcurrency || 4)), async (f) => {
+    const ready = await pool(files, Math.max(2, Math.min(6, navigator.hardwareConcurrency || 4)), async (f) => {
       try {
         const hash = await fingerprint(f);
         if (known.has(hash)) { skipped++; return null; }
@@ -941,7 +941,7 @@
     $("uploadGo").disabled = !pending.length;
   }
 
-  const UPLOAD_LIMIT = 4;
+  const UPLOAD_LIMIT = 6; // photos in flight at once (each sends full + thumbnail in parallel)
   // XHR instead of fetch so upload progress can be shown
   const sendOnce = (blob, name, type, extra, onProgress) => new Promise((resolve, reject) => {
     const fd = new FormData();
