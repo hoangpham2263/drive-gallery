@@ -211,9 +211,10 @@ async function handle(req, env, ctx) {
     return json((await env.MEM.get("visited", "json")) || [], 200, { "cache-control": "no-store" });
   }
 
-  // Specific places visited (Núi Bà Đen, Mũi Né…), pinned on the map
-  if (path === "/api/places" && req.method === "GET") {
-    return json((await env.MEM.get("places", "json")) || [], 200, { "cache-control": "no-store" });
+  // Specific places visited (Núi Bà Đen, Mũi Né…) and places planned next, pinned on the map
+  const spots = path.match(/^\/api\/(places|plans)$/)?.[1];
+  if (spots && req.method === "GET") {
+    return json((await env.MEM.get(spots, "json")) || [], 200, { "cache-control": "no-store" });
   }
 
   if (path === "/api/status" && req.method === "GET") {
@@ -256,7 +257,7 @@ async function handle(req, env, ctx) {
     return json(clean);
   }
 
-  if (path === "/api/places" && req.method === "PUT") {
+  if (spots && req.method === "PUT") {
     const { places = [] } = await req.json();
     const num = (v) => (Number.isFinite(+v) && v !== null && v !== "" ? +v : null);
     const clean = places.slice(0, 300).map((x) => ({
@@ -265,7 +266,7 @@ async function handle(req, env, ctx) {
       lat: num(x.lat),
       lng: num(x.lng),
     })).filter((x) => x.name);
-    await env.MEM.put("places", JSON.stringify(clean));
+    await env.MEM.put(spots, JSON.stringify(clean));
     return json(clean);
   }
 

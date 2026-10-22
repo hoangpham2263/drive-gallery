@@ -8,7 +8,7 @@
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <link rel="stylesheet" href="style.css?v=25" />
+    <link rel="stylesheet" href="style.css?v=26" />
   </head>
   <body>
     <main class="wrap">
@@ -57,9 +57,17 @@
         </div>
       </section>
 
-      <section class="card" id="statsCard" hidden>
+      <section class="card" id="statsCard">
         <h2>Thống kê</h2>
         <div id="stats" class="stats"></div>
+      </section>
+
+      <section class="card" id="plansCard" hidden>
+        <div class="sec-head">
+          <h2>Sắp đi</h2>
+          <span id="planCount" class="muted small"></span>
+        </div>
+        <div id="plans" class="plans"></div>
       </section>
 
       <section class="card">
@@ -180,6 +188,6 @@
     <script src="vendor/exifr.full.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
-    <script src="app.js?v=35"></script>
+    <script src="app.js?v=36"></script>
   </body>
 </html>

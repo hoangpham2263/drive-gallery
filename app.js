@@ -21,6 +21,7 @@
   let photos = [];
   let manual = []; // provinces ticked as visited without photos
   let places = []; // specific places visited: { name, province, lat, lng }
+  let plans = []; // places to go next, same shape
   let meta = { trips: {}, covers: {} }; // trip names/notes/covers, province covers
   let geo = null;
   let provinces = []; // names, sorted
@@ -251,6 +252,13 @@
     }
     // Places visited: small ring, always visible
     placeLayer.clearLayers();
+    for (const x of plans) {
+      if (x.lat == null || x.lng == null) continue;
+      const m = L.circleMarker([x.lat, x.lng], { pane: "dots", radius: 2.5, color: "#f59e0b", weight: 1, fillColor: "#fde68a", fillOpacity: 1 });
+      m.bindTooltip(`Sắp đi: ${x.name}`, { className: "tip", direction: "top" });
+      grow(m);
+      placeLayer.addLayer(m);
+    }
     for (const x of places) {
       if (x.lat == null || x.lng == null) continue;
       const m = L.circleMarker([x.lat, x.lng], { pane: "dots", radius: 2.5, color: cssVar("--muted"), weight: 1, fillColor: cssVar("--bg"), fillOpacity: 1 });
@@ -311,6 +319,62 @@
     try { places = await api("/api/places", jsonBody("PUT", { places: next })); renderAll(); toast(msg); }
     catch (err) { toast(err.message); }
   }
+  // Free OpenStreetMap search (Photon) inside Vietnam, each result with its province
+  async function searchSpots(q) {
+    try {
+      const data = await (await fetch(`https://photon.komoot.io/api/?limit=8&bbox=102,8,110,23.5&q=${encodeURIComponent(q)}`)).json();
+      return data.features.map((f) => {
+        const [lng, lat] = f.geometry.coordinates;
+        return { lat, lng, province: provinceAt(lat, lng) || "", label: [f.properties.name, f.properties.district || f.properties.city].filter(Boolean).join(", ") };
+      });
+    } catch { return []; }
+  }
+
+  // ---------- places to go next ----------
+  async function savePlans(next, msg) {
+    try { plans = await api("/api/plans", jsonBody("PUT", { places: next })); renderAll(); toast(msg); }
+    catch (err) { toast(err.message); }
+  }
+  function renderPlans() {
+    $("plansCard").hidden = !plans.length && !admin;
+    $("planCount").textContent = plans.length ? `${plans.length} nơi` : "";
+    const chips = el("div", { className: "chip-row" }, ...plans.map((x) => {
+      const chip = el("span", { className: "chip plan" }, el("span", { textContent: x.name }), x.province ? el("small", { textContent: x.province }) : null);
+      if (admin) {
+        const done = el("button", { type: "button", textContent: "✓", title: "Đã đi: chuyển sang nơi đã đến" });
+        done.onclick = async () => {
+          try { places = await api("/api/places", jsonBody("PUT", { places: [...places, x] })); }
+          catch (err) { return toast(err.message); }
+          savePlans(plans.filter((y) => y !== x), `✓ Đã đi ${x.name}`);
+        };
+        const del = el("button", { type: "button", textContent: "✕", title: "Bỏ" });
+        del.onclick = () => savePlans(plans.filter((y) => y !== x), `Đã bỏ ${x.name}`);
+        chip.append(done, del);
+      }
+      return chip;
+    }));
+    if (!admin) return $("plans").replaceChildren(chips);
+    const input = el("input", { placeholder: "Thêm nơi muốn đi, vd: Phú Quốc, Sa Pa…", autocomplete: "off" });
+    const go = el("button", { type: "button", textContent: "Tìm" });
+    const results = el("div", { className: "place-results" });
+    const search = async () => {
+      const q = input.value.trim();
+      if (!q) return;
+      results.replaceChildren(el("p", { className: "muted small", textContent: "Đang tìm…" }));
+      const found = (await searchSpots(q)).filter((r) => r.province).slice(0, 5);
+      const plain = el("button", { type: "button", className: "link", textContent: `Thêm "${q}" không ghim vị trí` });
+      plain.onclick = () => savePlans([...plans, { name: q, province: "", lat: null, lng: null }], `✓ Đã thêm ${q}`);
+      results.replaceChildren(...found.map((r) => {
+        const b = el("button", { type: "button" }, el("span", { textContent: r.label }), el("small", { textContent: r.province }));
+        b.onclick = () => savePlans([...plans, { name: q, province: r.province, lat: r.lat, lng: r.lng }], `✓ Đã thêm ${q}`);
+        return b;
+      }), ...(found.length ? [] : [el("p", { className: "muted small", textContent: `Không thấy "${q}".` })]), plain);
+    };
+    go.onclick = search;
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); search(); } });
+    $("plans").replaceChildren(...[plans.length ? chips : null, el("div", { className: "place-add" }, input, go), results].filter(Boolean));
+  }
+
   function placeBox(province, spots) {
     const chips = el("div", { className: "chip-row" }, ...spots.map((x) => {
       const chip = el("span", { className: "chip" }, el("span", { textContent: x.name }));
@@ -330,13 +394,8 @@
       const q = input.value.trim();
       if (!q) return;
       results.replaceChildren(el("p", { className: "muted small", textContent: "Đang tìm…" }));
-      let found = [];
-      try {
-        const data = await (await fetch(`https://photon.komoot.io/api/?limit=8&bbox=102,8,110,23.5&q=${encodeURIComponent(q)}`)).json();
-        // Only results inside this province
-        found = data.features.map((f) => ({ lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], label: [f.properties.name, f.properties.district || f.properties.city].filter(Boolean).join(", ") }))
-          .filter((r) => provinceAt(r.lat, r.lng) === province).slice(0, 5);
-      } catch {}
+      // Only results inside this province
+      const found = (await searchSpots(q)).filter((r) => r.province === province).slice(0, 5);
       const plain = el("button", { type: "button", className: "link", textContent: `Thêm "${q}" không ghim vị trí` });
       plain.onclick = () => add(q, null, null);
       results.replaceChildren(...found.map((r) => {
@@ -456,24 +515,13 @@
     $("visitedText").textContent = `Đã đến ${visited.size}/34 tỉnh, thành phố · ${photos.length} ảnh`;
     $("visitedBar").style.width = `${(visited.size / 34) * 100}%`;
     $("photoCount").textContent = photos.length ? `${photos.length} ảnh` : "";
-    $("statsCard").hidden = !photos.length;
-    if (!photos.length) return;
-    const trips = computeTrips();
-    const days = new Set(photos.map((p) => p.takenAt).filter(Boolean)).size;
-    const top = [...byProvince().entries()].filter(([n]) => n !== ABROAD).sort((a, b) => b[1].length - a[1].length)[0];
-    const years = new Map();
-    for (const t of trips) years.set(t.start.slice(0, 4), (years.get(t.start.slice(0, 4)) || 0) + 1);
-    const topYear = [...years.entries()].sort((a, b) => b[1] - a[1])[0];
-    const byLat = [...visited].map((n) => [n, labelOf(n)?.[1]]).filter(([, lat]) => lat != null).sort((a, b) => b[1] - a[1]);
     const items = [
-      [trips.length, "chuyến đi"],
-      [days, "ngày đã đi"],
-      [visited.size, "tỉnh, thành phố"],
-      top ? [top[0], `đến nhiều nhất · ${top[1].length} ảnh`] : null,
-      topYear ? [topYear[0], `đi nhiều nhất · ${topYear[1]} chuyến`] : null,
-      byLat.length ? [byLat[0][0], "xa nhất phía Bắc"] : null,
-      byLat.length ? [byLat.at(-1)[0], "xa nhất phía Nam"] : null,
-    ].filter(Boolean);
+      [photos.length, "ảnh"],
+      [computeTrips().length, "chuyến đi"],
+      [`${visited.size}/34`, "tỉnh, thành phố"],
+      [places.length, "địa điểm đã đến"],
+      [plans.length, "nơi sắp đi"],
+    ];
     $("stats").replaceChildren(...items.map(([v, label]) => el("div", { className: "stat" }, el("strong", { textContent: v }), el("span", { textContent: label }))));
   }
 
@@ -505,6 +553,7 @@
     renderStats();
     renderSide();
     renderTrips();
+    renderPlans();
     renderTimeline();
     refreshMap();
   }
@@ -692,6 +741,7 @@
       $("driveLink").hidden = !status.folder;
       if (status.folder) $("driveLink").href = `https://drive.google.com/drive/folders/${status.folder}`;
     }
+    renderPlans();
   }
 
   async function checkAdmin() {
@@ -744,7 +794,7 @@
     if (!window.JSZip) return toast("Đang tải bộ nén ZIP, thử lại sau vài giây");
     if (!photos.length) return toast("Chưa có ảnh để tải");
     const zip = new JSZip();
-    zip.file("memories.json", JSON.stringify({ photos, visited: manual, places, meta }, null, 2));
+    zip.file("memories.json", JSON.stringify({ photos, visited: manual, places, plans, meta }, null, 2));
     let done = 0;
     $("backupZip").disabled = true;
     await pool(photos, 4, async (p) => {
@@ -1047,11 +1097,12 @@
     provinceOptions($("selProvince"), "", "Chọn tỉnh…");
     initMap();
     try {
-      [photos, manual, meta, places] = await Promise.all([
+      [photos, manual, meta, places, plans] = await Promise.all([
         api("/api/photos"),
         api("/api/visited").catch(() => []),
         api("/api/meta").catch(() => ({ trips: {}, covers: {} })),
         api("/api/places").catch(() => []),
+        api("/api/plans").catch(() => []),
       ]);
     } catch (err) {
       toast(`Không tải được ảnh: ${err.message}`);

@@ -265,3 +265,5 @@ select {
 
 /* Photo list scrolls on its own: reaching the end no longer drags the page along */
 .side-body { overscroll-behavior: contain; scrollbar-gutter: stable; padding-right: 2px; }
+.plans { display: grid; gap: 8px; }
+.chip.plan { background: color-mix(in srgb, #f59e0b 10%, var(--bg)); border-color: color-mix(in srgb, #f59e0b 35%, var(--border)); }
