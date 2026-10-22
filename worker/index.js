@@ -15,7 +15,7 @@ function cors(req) {
   const origin = req.headers.get("origin") || "";
   return {
     "access-control-allow-origin": ORIGINS.includes(origin) ? origin : ORIGINS[0],
-    "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
+    "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "access-control-allow-headers": "content-type, x-admin-key",
     "vary": "origin",
   };

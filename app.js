@@ -790,6 +790,7 @@
     $("uploadList").replaceChildren(el("p", { className: "muted small", textContent: `Đang đọc ${files.length} ảnh…` }));
     $("upProgress").hidden = true;
     $("uploadGo").textContent = "Tải lên";
+    $("uploadGo").disabled = true; // until every photo is read
     $("uploadDlg").showModal();
     // Skip files already in the album, and repeats inside this batch
     const known = new Set(photos.map((p) => p.hash).filter(Boolean));
