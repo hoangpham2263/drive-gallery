@@ -112,6 +112,11 @@ button:disabled { opacity: .5; cursor: default; }
 .tl-month h3 { margin: 0; font-size: 14px; font-weight: 600; }
 .tl-month h3 small { font-weight: 400; color: var(--muted); }
 .timeline .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+.tl-day { display: grid; gap: 6px; }
+.tl-day-head { margin: 0; font-size: 14px; }
+.tl-day-head small { color: var(--muted); font-size: 13px; }
+.drop-overlay { position: fixed; inset: 0; z-index: 9000; display: grid; place-items: center; background: color-mix(in srgb, var(--primary) 12%, transparent); backdrop-filter: blur(2px); pointer-events: none; }
+.drop-overlay div { padding: 18px 24px; border: 2px dashed var(--primary); border-radius: 14px; background: var(--bg); font-size: 15px; }
 
 /* Dialogs */
 .dlg { width: min(720px, calc(100% - 32px)); padding: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--bg); color: var(--fg); }
@@ -140,6 +145,7 @@ button:disabled { opacity: .5; cursor: default; }
 .viewer-info { width: min(720px, 100%); margin: 0 auto; padding: 12px 14px; border-radius: 12px; background: var(--bg); font-size: 14px; display: grid; gap: 10px; }
 .viewer-info p { margin: 0; }
 .edit { display: grid; grid-template-columns: minmax(0, 1fr) 180px 150px; gap: 6px; }
+.edit [name=place] { grid-column: 1 / -1; }
 .edit textarea, .edit .actions { grid-column: 1 / -1; }
 
 /* How it works */

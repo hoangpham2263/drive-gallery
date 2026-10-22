@@ -220,18 +220,25 @@
       return;
     }
     const sorted = [...photos].sort((a, b) => photoDate(b).localeCompare(photoDate(a)));
+    // Month headings, then one row per day with its places
     const months = new Map();
     for (const p of sorted) {
       const d = new Date(photoDate(p));
-      const key = isNaN(d) ? "Không rõ thời gian" : `Tháng ${d.getMonth() + 1}/${d.getFullYear()}`;
-      months.set(key, [...(months.get(key) || []), p]);
+      const month = isNaN(d) ? "Không rõ thời gian" : `Tháng ${d.getMonth() + 1}/${d.getFullYear()}`;
+      const day = isNaN(d) ? "" : fmtDate(photoDate(p));
+      if (!months.has(month)) months.set(month, new Map());
+      const days = months.get(month);
+      days.set(day, [...(days.get(day) || []), p]);
     }
-    $("timeline").replaceChildren(...[...months.entries()].map(([label, list]) => {
-      const places = [...new Set(list.map((p) => p.province).filter(Boolean))].join(", ");
-      return el("div", { className: "tl-month" },
-        el("h3", {}, label, places ? el("small", { textContent: ` · ${places}` }) : null),
-        el("div", { className: "grid" }, ...list.map((p) => thumbButton(p, list))));
-    }));
+    $("timeline").replaceChildren(...[...months.entries()].map(([month, days]) =>
+      el("div", { className: "tl-month" },
+        el("h3", { textContent: month }),
+        ...[...days.entries()].map(([day, list]) => {
+          const places = [...new Set(list.map((p) => [p.place, p.province].filter(Boolean).join(", ")).filter(Boolean))].join(" · ");
+          return el("div", { className: "tl-day" },
+            el("p", { className: "tl-day-head" }, el("span", { textContent: day || "Không rõ ngày" }), places ? el("small", { textContent: ` · ${places}` }) : null),
+            el("div", { className: "grid" }, ...list.map((p) => thumbButton(p, sorted))));
+        }))));
   }
 
   function renderAll() {
@@ -254,7 +261,7 @@
     if (!p) return;
     $("viewerImg").src = imgUrl(p);
     $("viewerImg").alt = p.title || "";
-    const meta = [p.province, fmtDate(photoDate(p)), p.camera].filter(Boolean).join(" · ");
+    const meta = [[p.place, p.province].filter(Boolean).join(", "), fmtDate(photoDate(p)), p.camera].filter(Boolean).join(" · ");
     $("viewerText").replaceChildren(
       p.title ? el("p", {}, el("strong", { textContent: p.title })) : null,
       el("p", { className: "muted small", textContent: meta }),
@@ -267,6 +274,7 @@
     if (adminKey) {
       f.title.value = p.title || "";
       f.province.value = p.province || "";
+      f.place.value = p.place || "";
       f.takenAt.value = (photoDate(p) || "").slice(0, 10);
       f.note.value = p.note || "";
     }
@@ -290,7 +298,7 @@
       const updated = await api(`/api/photos/${p.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title: f.title.value, province: f.province.value, takenAt: f.takenAt.value, note: f.note.value }),
+        body: JSON.stringify({ title: f.title.value, province: f.province.value, place: f.place.value, takenAt: f.takenAt.value, note: f.note.value }),
       });
       Object.assign(p, updated);
       Object.assign(photos.find((x) => x.id === p.id) || {}, updated);
@@ -396,6 +404,22 @@
     return { blob, width: w, height: h };
   }
 
+  const localDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+  // GPS → "Hội An" style place name (free client-side geocoder, no key)
+  const geoCache = new Map();
+  async function placeName(lat, lng) {
+    const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+    if (!geoCache.has(key)) {
+      geoCache.set(key, fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=vi`)
+        .then((r) => r.json())
+        // "Phường Hội An" / "Phuong Hoi An" → "Hội An"
+        .then((d) => (d.locality || d.city || "").replace(/^(phường|phuong|xã|xa|thị trấn|thi tran|quận|quan)\s+/i, ""))
+        .catch(() => ""));
+    }
+    return geoCache.get(key);
+  }
+
   async function prepare(file) {
     let exif = {};
     try { exif = (await exifr.parse(file, { gps: true, tiff: true, exif: true })) || {}; } catch {}
@@ -408,21 +432,40 @@
     const [full, thumb] = await Promise.all([resize(bitmap, 2560, "image/jpeg", 0.88), resize(bitmap, 480, "image/webp", 0.8)]);
     bitmap.close();
     const lat = exif.latitude ?? null, lng = exif.longitude ?? null;
-    const date = exif.DateTimeOriginal || exif.CreateDate;
+    const date = exif.DateTimeOriginal || exif.CreateDate || (file.lastModified ? new Date(file.lastModified) : null);
     return {
       name: file.name.replace(/\.(heic|heif|png|webp|avif)$/i, ".jpg"),
       preview: URL.createObjectURL(thumb.blob),
       full, thumb, lat, lng,
       province: lat != null ? provinceAt(lat, lng) || ABROAD : "",
-      takenAt: date instanceof Date && !isNaN(date) ? date.toISOString().slice(0, 10) : "",
+      place: lat != null ? await placeName(lat, lng) : "",
+      takenAt: date instanceof Date && !isNaN(date) ? localDay(date) : "",
       camera: [exif.Make, exif.Model].filter(Boolean).join(" ").replace(/^(\w+) \1/i, "$1").trim(),
     };
   }
 
   $("addBtn").onclick = () => $("fileInput").click();
-  $("fileInput").onchange = async (e) => {
+  $("fileInput").onchange = (e) => {
     const files = [...e.target.files];
     e.target.value = "";
+    handleFiles(files);
+  };
+
+  // Drag photos anywhere on the page (manage mode, Drive connected)
+  let dragDepth = 0;
+  const canDrop = (e) => !$("addBtn").closest("[hidden]") && [...(e.dataTransfer?.types || [])].includes("Files");
+  window.addEventListener("dragenter", (e) => { if (!canDrop(e)) return; e.preventDefault(); dragDepth++; $("dropOverlay").hidden = false; });
+  window.addEventListener("dragover", (e) => { if (canDrop(e)) e.preventDefault(); });
+  window.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; $("dropOverlay").hidden = true; } });
+  window.addEventListener("drop", (e) => {
+    if (!canDrop(e)) return;
+    e.preventDefault();
+    dragDepth = 0;
+    $("dropOverlay").hidden = true;
+    handleFiles([...e.dataTransfer.files].filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name)));
+  });
+
+  async function handleFiles(files) {
     if (!files.length) return;
     pending = [];
     $("uploadList").replaceChildren(el("p", { className: "muted small", textContent: `Đang đọc ${files.length} ảnh…` }));
@@ -437,7 +480,7 @@
     });
     pending = ready.filter(Boolean);
     renderPending();
-  };
+  }
 
   function renderPending() {
     $("uploadList").replaceChildren(...pending.map((p) => {
@@ -446,21 +489,24 @@
       sel.onchange = () => (p.province = sel.value);
       const date = el("input", { type: "date", value: p.takenAt });
       date.onchange = () => (p.takenAt = date.value);
-      const title = el("input", { placeholder: "Tiêu đề (không bắt buộc)", className: "full" });
+      const place = el("input", { placeholder: "Địa điểm (vd: Hội An, Bà Nà)", value: p.place || "" });
+      place.oninput = () => (p.place = place.value);
+      const title = el("input", { placeholder: "Tiêu đề (không bắt buộc)" });
       title.oninput = () => (p.title = title.value);
       p.state = el("div", { className: "up-state full", textContent: p.lat != null ? "Có GPS" : "Không có GPS — chọn tỉnh" });
       return el("div", { className: "up-row" },
         el("img", { src: p.preview, alt: "" }),
-        el("div", { className: "up-fields" }, sel, date, title, p.state));
+        el("div", { className: "up-fields" }, sel, date, place, title, p.state));
     }));
     $("uploadGo").disabled = !pending.length;
   }
 
   const UPLOAD_LIMIT = 4;
   // XHR instead of fetch so upload progress can be shown
-  const sendFile = (blob, name, type, onProgress) => new Promise((resolve, reject) => {
+  const sendFile = (blob, name, type, extra, onProgress) => new Promise((resolve, reject) => {
     const fd = new FormData();
     fd.append("file", new File([blob], name, { type }));
+    for (const [k, v] of Object.entries(extra)) fd.append(k, v || "");
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API}/api/upload`);
     xhr.setRequestHeader("x-admin-key", adminKey);
@@ -488,9 +534,14 @@
       const bytes = [...sent.values()].reduce((a, b) => a + b, 0);
       const pct = Math.min(99, Math.round((bytes / total) * 100));
       $("upBar").style.width = `${pct}%`;
-      $("upText").textContent = `Đang tải lên ${finished}/${todo.length} ảnh · ${pct}%`;
+      $("upText").textContent = pct >= 99 ? `Đang lưu lên Google Drive… (${finished}/${todo.length} ảnh xong)` : `Đang tải lên ${finished}/${todo.length} ảnh · ${pct}%`;
     };
     $("upProgress").hidden = false;
+    $("upText").textContent = "Đang chuẩn bị thư mục trên Drive…";
+    try {
+      const groups = [...new Map(todo.map((p) => [`${p.province}|${(p.takenAt || "").slice(0, 7)}`, { province: p.province, takenAt: p.takenAt }])).values()];
+      await api("/api/folders", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ groups }) });
+    } catch (err) { toast(err.message); }
     paint();
     // 1) files to Drive, several photos at once (full + thumbnail in parallel per photo)
     await pool(todo, UPLOAD_LIMIT, async (p) => {
@@ -499,8 +550,8 @@
       try {
         const track = (key) => (n) => { sent.set(key, n); const pct = Math.round((((sent.get(p.name + "f") || 0) + (sent.get(p.name + "t") || 0)) / (p.full.blob.size + p.thumb.blob.size)) * 100); p.state.textContent = `Đang tải lên… ${pct}%`; paint(); };
         const [fileId, thumbId] = await Promise.all([
-          sendFile(p.full.blob, p.name, "image/jpeg", track(p.name + "f")),
-          sendFile(p.thumb.blob, p.name.replace(/\.\w+$/, ".webp"), "image/webp", track(p.name + "t")),
+          sendFile(p.full.blob, p.name, "image/jpeg", { province: p.province, takenAt: p.takenAt, place: p.place }, track(p.name + "f")),
+          sendFile(p.thumb.blob, p.name.replace(/\.\w+$/, ".webp"), "image/webp", { kind: "thumb" }, track(p.name + "t")),
         ]);
         Object.assign(p, { fileId, thumbId });
         finished++;
@@ -521,7 +572,7 @@
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ items: uploaded.map((p) => ({
             fileId: p.fileId, thumbId: p.thumbId, name: p.name, width: p.full.width, height: p.full.height,
-            camera: p.camera, province: p.province, takenAt: p.takenAt, title: p.title || "", lat: p.lat, lng: p.lng,
+            camera: p.camera, province: p.province, place: p.place || "", takenAt: p.takenAt, title: p.title || "", lat: p.lat, lng: p.lng,
           })) }),
         });
         photos.push(...added);

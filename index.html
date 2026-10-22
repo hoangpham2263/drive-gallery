@@ -8,7 +8,7 @@
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <link rel="stylesheet" href="style.css?v=3" />
+    <link rel="stylesheet" href="style.css?v=4" />
   </head>
   <body>
     <main class="wrap">
@@ -67,6 +67,7 @@
           <li>Bấm vào một tỉnh trên bản đồ (hoặc trong danh sách) để xem ảnh ở nơi đó.</li>
           <li>Bấm vào ảnh để xem lớn, dùng phím ← → để chuyển ảnh.</li>
           <li>Kéo bản đồ để di chuyển, cuộn hoặc chụm hai ngón để phóng to.</li>
+          <li>Chế độ quản lý: bấm "+ Thêm ảnh" hoặc kéo thả ảnh vào trang. Ảnh được lưu trên Google Drive theo thư mục Tỉnh / Tháng.</li>
         </ol>
       </details>
 
@@ -103,6 +104,7 @@
             <input name="title" placeholder="Tiêu đề" />
             <select name="province"></select>
             <input name="takenAt" type="date" />
+            <input name="place" placeholder="Địa điểm (vd: Hội An)" />
             <textarea name="note" rows="2" placeholder="Ghi chú"></textarea>
             <div class="actions">
               <button id="deleteBtn" type="button">Xóa</button>
@@ -113,11 +115,13 @@
       </div>
     </dialog>
 
+    <div id="dropOverlay" class="drop-overlay" hidden><div>Thả ảnh vào đây để thêm vào bản đồ</div></div>
+
     <input id="fileInput" type="file" accept="image/*,.heic,.heif" multiple hidden />
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script src="vendor/exifr.full.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
-    <script src="app.js?v=6"></script>
+    <script src="app.js?v=8"></script>
   </body>
 </html>

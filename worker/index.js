@@ -73,9 +73,40 @@ async function folderId(env) {
   return id;
 }
 
-// multipart/related upload of one file (+ JSON metadata) into the folder
-async function uploadFile(env, name, mime, bytes) {
-  const parent = await folderId(env);
+// Sub-folder under a parent, created once and remembered in KV ("Hà Nội" → "2026-10")
+async function childFolder(env, parentId, name) {
+  const key = `folder:${parentId}:${name}`;
+  const saved = await env.MEM.get(key);
+  if (saved) return saved;
+  const r = await drive(env, "/drive/v3/files?fields=id", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: [parentId] }),
+  });
+  const { id } = await r.json();
+  await env.MEM.put(key, id);
+  return id;
+}
+
+// Photos: <root>/<Tỉnh>/<YYYY-MM>/…  Thumbnails: <root>/_thumbs/…
+async function photoFolder(env, province, takenAt) {
+  const root = await folderId(env);
+  const month = /^\d{4}-\d{2}/.test(takenAt || "") ? takenAt.slice(0, 7) : "Không rõ thời gian";
+  const place = await childFolder(env, root, province || "Chưa rõ nơi");
+  return childFolder(env, place, month);
+}
+const thumbFolder = async (env) => childFolder(env, await folderId(env), "_thumbs");
+
+async function moveFile(env, fileId, toFolder) {
+  const r = await drive(env, `/drive/v3/files/${fileId}?fields=parents`);
+  const { parents = [] } = await r.json();
+  if (parents.includes(toFolder)) return;
+  await drive(env, `/drive/v3/files/${fileId}?addParents=${toFolder}&removeParents=${parents.join(",")}&fields=id`, { method: "PATCH" });
+}
+
+// multipart/related upload of one file (+ JSON metadata) into a folder
+async function uploadFile(env, name, mime, bytes, parent) {
+  parent = parent || (await folderId(env));
   const boundary = "mem" + crypto.randomUUID();
   const head = `--${boundary}\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name, parents: [parent] })}\r\n--${boundary}\r\ncontent-type: ${mime}\r\n\r\n`;
   const body = new Blob([head, bytes, `\r\n--${boundary}--`]);
@@ -106,12 +137,13 @@ async function mirrorList(env, list) {
   } catch {}
 }
 
-const FIELDS = ["title", "note", "province", "takenAt", "lat", "lng"];
+const FIELDS = ["title", "note", "province", "place", "takenAt", "lat", "lng"];
 function cleanMeta(input = {}) {
   const out = {};
   for (const k of FIELDS) if (k in input) out[k] = input[k] === "" ? null : input[k];
   if (out.title) out.title = String(out.title).slice(0, 120);
   if (out.note) out.note = String(out.note).slice(0, 1000);
+  if (out.place) out.place = String(out.place).slice(0, 120);
   for (const k of ["lat", "lng"]) if (out[k] != null) out[k] = Number(out[k]);
   return out;
 }
@@ -192,12 +224,43 @@ async function handle(req, env, ctx) {
   if (!path.startsWith("/api/")) return new Response("Not found", { status: 404 });
   if (!isAdmin(req, env)) return json({ error: "Sai mật khẩu quản lý." }, 401);
 
+  // Create the Tỉnh/Tháng folders once before parallel uploads, so they never race to create duplicates
+  if (path === "/api/folders" && req.method === "POST") {
+    const { groups = [] } = await req.json();
+    // Provinces in parallel; months of the same province one by one (they share the parent folder)
+    const byProv = new Map();
+    for (const g of groups.slice(0, 200)) byProv.set(String(g.province || ""), [...(byProv.get(String(g.province || "")) || []), String(g.takenAt || "")]);
+    await Promise.all([
+      thumbFolder(env),
+      ...[...byProv].map(async ([prov, dates]) => { for (const d of dates) await photoFolder(env, prov, d); }),
+    ]);
+    return json({ ok: true });
+  }
+
   // Step 1 (parallel-safe): store one file in Drive, return its id. Does not touch the list.
   if (path === "/api/upload" && req.method === "POST") {
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) return json({ error: "Thiếu file ảnh." }, 400);
-    const id = await uploadFile(env, file.name, file.type || "image/jpeg", await file.arrayBuffer());
+    const isThumb = form.get("kind") === "thumb";
+    const province = String(form.get("province") || "");
+    const takenAt = String(form.get("takenAt") || "");
+    const parent = isThumb ? await thumbFolder(env) : await photoFolder(env, province, takenAt);
+    // "2026-10-20 · Hội An · IMG_1234.jpg" so the Drive folder reads well on its own
+    const place = String(form.get("place") || "").replace(/[\\/:*?"<>|]/g, "").slice(0, 60);
+    const name = isThumb ? file.name : [takenAt, place, file.name].filter(Boolean).join(" · ");
+    const bytes = await file.arrayBuffer();
+    let id;
+    try {
+      id = await uploadFile(env, name, file.type || "image/jpeg", bytes, parent);
+    } catch (e) {
+      // The folder was probably deleted in Drive: forget every cached folder and try again
+      if (!/Drive 404/.test(e.message)) throw e;
+      const keys = await env.MEM.list({ prefix: "folder:" });
+      await Promise.all([...keys.keys.map((k) => env.MEM.delete(k.name)), env.MEM.delete("folder_id")]);
+      const again = isThumb ? await thumbFolder(env) : await photoFolder(env, province, takenAt);
+      id = await uploadFile(env, name, file.type || "image/jpeg", bytes, again);
+    }
     return json({ id });
   }
 
@@ -227,7 +290,11 @@ async function handle(req, env, ctx) {
     const list = await readList(env);
     const item = list.find((p) => p.id === one[1]);
     if (!item) return json({ error: "Không tìm thấy ảnh." }, 404);
+    const before = `${item.province}|${(item.takenAt || "").slice(0, 7)}`;
     Object.assign(item, cleanMeta(await req.json()));
+    if (`${item.province}|${(item.takenAt || "").slice(0, 7)}` !== before) {
+      try { await moveFile(env, item.fileId, await photoFolder(env, item.province, item.takenAt)); } catch {}
+    }
     await writeList(env, list, ctx);
     return json(item);
   }
