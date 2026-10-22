@@ -674,20 +674,25 @@
 
   async function checkAdmin() {
     if (!adminKey) return renderAdmin(null);
-    try {
-      const s = await api("/api/status");
-      if (!s.admin) throw new Error("Sai mật khẩu quản lý.");
-      const wasAdmin = admin;
-      renderAdmin(s);
-      // Owner also sees private photos
-      if (!wasAdmin) { photos = await api("/api/photos"); renderAll(); }
-      return s;
-    } catch (err) {
+    let s;
+    try { s = await api("/api/status"); }
+    catch {
+      // Network hiccup (sleep, wifi, Worker redeploy): stay signed in, try again on next focus
+      return admin ? { admin: true } : undefined;
+    }
+    // Only a wrong password signs out
+    if (!s.admin) {
       adminKey = null;
       store.set("mem-admin", null);
       renderAdmin(null);
-      toast(err.message);
+      toast("Sai mật khẩu quản lý.");
+      return;
     }
+    const wasAdmin = admin;
+    renderAdmin(s);
+    // Owner also sees private photos
+    if (!wasAdmin) { try { photos = await api("/api/photos"); renderAll(); } catch {} }
+    return s;
   }
 
   $("adminBtn").onclick = async () => {
