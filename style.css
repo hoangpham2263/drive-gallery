@@ -267,8 +267,6 @@ select {
 .side-body { overscroll-behavior: contain; scrollbar-gutter: stable; padding-right: 2px; }
 .plans { display: grid; gap: 8px; }
 .chip.plan { background: color-mix(in srgb, #f59e0b 10%, var(--bg)); border-color: color-mix(in srgb, #f59e0b 35%, var(--border)); }
-.trip-badge { position: absolute; top: 8px; left: 8px; padding: 2px 8px; border-radius: 999px; background: var(--primary); color: #fff; font-size: 12px; }
-@media (min-width: 640px) { .trip.latest { grid-column: span 2; aspect-ratio: auto; min-height: 100%; } }
 /* Stats: label on top, value below, one full row */
 .stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .stat span { order: 0; }
