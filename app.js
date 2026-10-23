@@ -390,6 +390,10 @@
   }
 
   $("settingsBtn").onclick = () => $("settingsDlg").showModal();
+  // Click outside a dialog (on the dark overlay) closes it, except while photos are uploading
+  document.querySelectorAll("dialog.dlg").forEach((d) => d.addEventListener("click", (e) => {
+    if (e.target === d && !(d.id === "uploadDlg" && $("uploadGo").disabled && !$("upProgress").hidden)) d.close();
+  }));
   // Menu shortcuts to the map actions (phones)
   document.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => { $("settingsDlg").close(); $(b.dataset.go).click(); }));
   $("plansBtn").onclick = () => { renderPlans(); $("plansDlg").showModal(); };
