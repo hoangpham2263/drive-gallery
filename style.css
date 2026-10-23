@@ -393,8 +393,8 @@ strong, b, th, summary, .dlg-head strong { font-weight: 500; }
   .dlg { transition: transform .28s cubic-bezier(.2, .8, .2, 1), overlay .28s allow-discrete, display .28s allow-discrete; transform: translateY(100%); }
   .dlg[open] { transform: none; }
   @starting-style { .dlg[open] { transform: translateY(100%); } }
-  .dlg-menu { transform: translateX(100%); }
-  @starting-style { .dlg-menu[open] { transform: translateX(100%); } }
+  .dlg-menu { transform: translateX(-100%); }
+  @starting-style { .dlg-menu[open] { transform: translateX(-100%); } }
 
   .dlg::backdrop { transition: background .28s, overlay .28s allow-discrete, display .28s allow-discrete; background: rgba(15, 23, 42, 0); }
   .dlg[open]::backdrop { background: rgba(15, 23, 42, .6); }
