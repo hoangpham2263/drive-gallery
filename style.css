@@ -261,7 +261,8 @@ select {
 .leaflet-container:focus { outline: none; }
 
 /* Photo list scrolls on its own: reaching the end no longer drags the page along */
-.side-body { overscroll-behavior: contain; scrollbar-gutter: stable; padding-right: 2px; }
+.side-body { padding-right: 2px; }
+.side-body.scrolls { overscroll-behavior: contain; }
 .plans { display: grid; gap: 8px; }
 .chip.plan { background: color-mix(in srgb, #f59e0b 10%, var(--bg)); border-color: color-mix(in srgb, #f59e0b 35%, var(--border)); }
 /* Stats: label on top, value below, one full row */

@@ -475,6 +475,12 @@
     return b;
   }
 
+  // Keep page scroll working over the side list until the list itself has something to scroll
+  const sideBody = $("sideBody");
+  const markScroll = () => sideBody.classList.toggle("scrolls", sideBody.scrollHeight > sideBody.clientHeight + 1);
+  new ResizeObserver(markScroll).observe(sideBody);
+  new MutationObserver(markScroll).observe(sideBody, { childList: true, subtree: true });
+
   function showList(title, list, head) {
     selected = title;
     $("sideBack").hidden = false;
