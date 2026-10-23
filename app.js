@@ -308,6 +308,7 @@
     setImg(img, p, "thumb");
     const b = el("button", { type: "button", className: "thumb", title: p.title || p.place || p.province || "" }, img,
       p.private ? el("span", { className: "lock", textContent: "🔒" }) : null);
+    b.dataset.id = p.id;
     b.classList.toggle("sel", picked.has(p.id));
     b.onclick = () => {
       if (!selecting) return openViewer(list, list.indexOf(p));
@@ -437,12 +438,12 @@
     $("sideBack").hidden = !selected;
     if (selected && provinces.concat(ABROAD).includes(selected)) {
       const list = newestFirst(groups.get(selected) || []);
+      albumList = list;
       $("sideTitle").textContent = `${selected} · ${list.length} ảnh`;
       const ticked = visitedSet().has(selected);
       const spots = placesIn(selected);
       $("sideBody").replaceChildren(...[
         spots.length || admin ? placeBox(selected, spots) : null,
-        list.length > 1 ? downloadAll(list, selected) : null,
         list.length ? grid(list) : ticked || spots.length ? null : el("p", { className: "empty", textContent: "Chưa có ảnh." }),
       ].filter(Boolean));
       return;
@@ -468,24 +469,25 @@
     }));
   }
 
-  // "Tải tất cả" above a province / trip photo list
-  function downloadAll(list, title) {
-    const b = el("button", { type: "button", className: "dl-all", textContent: `Tải tất cả ${list.length} ảnh` });
-    b.onclick = () => downloadPhotos(list, `${slug(title) || "memories"}-${list.length}-anh.zip`);
-    return b;
-  }
+  // Photos of the album open in the side panel (province / trip / Other); "Chọn tất cả" picks these
+  let albumList = null;
+  const albumPhotos = () => (selected && albumList ? albumList : shown());
 
   // Keep page scroll working over the side list until the list itself has something to scroll
   const sideBody = $("sideBody");
-  const markScroll = () => sideBody.classList.toggle("scrolls", sideBody.scrollHeight > sideBody.clientHeight + 1);
+  const markScroll = () => {
+    sideBody.classList.toggle("scrolls", sideBody.scrollHeight > sideBody.clientHeight + 1);
+    if (selecting) renderSelBar(); // "Chọn cả …" follows the album on screen
+  };
   new ResizeObserver(markScroll).observe(sideBody);
-  new MutationObserver(markScroll).observe(sideBody, { childList: true, subtree: true });
+  new MutationObserver(markScroll).observe(sideBody, { childList: true });
 
   function showList(title, list, head) {
     selected = title;
     $("sideBack").hidden = false;
     $("sideTitle").textContent = `${title} · ${list.length} ảnh`;
-    $("sideBody").replaceChildren(...(head || []), ...(list.length > 1 ? [downloadAll(list, title)] : []), grid(list));
+    albumList = list;
+    $("sideBody").replaceChildren(...(head || []), grid(list));
   }
 
   // ---------- trips ----------
@@ -753,8 +755,9 @@
     $("selCount").textContent = `Đã chọn ${picked.size} ảnh`;
     for (const id of ["selMove", "selPrivate", "selPublic", "selDownload", "selDelete"]) $(id).disabled = !picked.size;
     $("selDownload").textContent = picked.size > 1 ? `Tải ${picked.size} ảnh` : "Tải về";
-    const all = photos.length && picked.size === photos.length;
-    $("selAll").textContent = all ? "Bỏ chọn" : "Chọn tất cả";
+    const scope = albumPhotos();
+    const all = scope.length && scope.every((p) => picked.has(p.id));
+    $("selAll").textContent = all ? "Bỏ chọn" : selected ? `Chọn cả ${selected}` : "Chọn tất cả";
   }
   function setSelecting(on) {
     selecting = on;
@@ -779,9 +782,10 @@
   $("selectBtn").onclick = () => setSelecting(!selecting);
   $("selDone").onclick = () => setSelecting(false);
   $("selAll").onclick = () => {
-    if (picked.size === photos.length) picked.clear();
-    else photos.forEach((p) => picked.add(p.id));
-    document.querySelectorAll(".thumb").forEach((b) => b.classList.toggle("sel", picked.size > 0));
+    const scope = albumPhotos();
+    if (scope.every((p) => picked.has(p.id))) scope.forEach((p) => picked.delete(p.id));
+    else scope.forEach((p) => picked.add(p.id));
+    document.querySelectorAll(".thumb").forEach((b) => b.classList.toggle("sel", picked.has(b.dataset.id)));
     renderSelBar();
   };
   $("selMove").onclick = () => {

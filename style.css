@@ -287,7 +287,6 @@ strong, b, th, summary, .dlg-head strong { font-weight: 500; }
 
 /* Download */
 .viewer-download { position: absolute; top: 16px; right: 60px; z-index: 2; }
-.dl-all { width: 100%; }
 .selecting .toast { bottom: 96px; }
 
 /* ---------- Mobile ---------- */
