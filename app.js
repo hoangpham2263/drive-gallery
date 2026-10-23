@@ -303,8 +303,17 @@
   }
 
   // ---------- photo tiles ----------
-  function thumbButton(p, list) {
-    const img = el("img", { alt: p.title || "", loading: "lazy" });
+  // Top of the page first: the first images load at once with high priority, the rest lazily as they scroll in.
+  // Each image fades in when ready, over a soft placeholder.
+  function lazyImg(first, props = {}) {
+    const img = el("img", { decoding: "async", loading: first ? "eager" : "lazy", ...props });
+    img.fetchPriority = first ? "high" : "low";
+    img.addEventListener("load", () => img.classList.add("ready"), { once: true });
+    return img;
+  }
+
+  function thumbButton(p, list, first = false) {
+    const img = lazyImg(first, { alt: p.title || "" });
     setImg(img, p, "thumb");
     const b = el("button", { type: "button", className: "thumb", title: p.title || p.place || p.province || "" }, img,
       p.private ? el("span", { className: "lock", textContent: "🔒" }) : null);
@@ -318,7 +327,7 @@
     };
     return b;
   }
-  const grid = (list) => el("div", { className: "grid" }, ...list.map((p) => thumbButton(p, list)));
+  const grid = (list) => el("div", { className: "grid" }, ...list.map((p, i) => thumbButton(p, list, i < 9)));
 
   // ---------- side panel ----------
   // Specific places in one province; the owner adds them here, one province at a time
@@ -459,7 +468,7 @@
     if (!rows.length) return $("sideBody").replaceChildren(el("p", { className: "empty", textContent: "Chưa có nơi nào." }));
     $("sideBody").replaceChildren(...rows.map(([name, list]) => {
       const cover = name === OTHER ? null : coverOf(name);
-      const icon = cover ? el("img", { className: "prov-cover", alt: "" }) : el("i", { style: `background:${name === OTHER || name === ABROAD ? cssVar("--muted") : colorOf(name)}` });
+      const icon = cover ? lazyImg(true, { className: "prov-cover", alt: "" }) : el("i", { style: `background:${name === OTHER || name === ABROAD ? cssVar("--muted") : colorOf(name)}` });
       if (cover) setImg(icon, cover, "thumb");
       const b = el("button", { type: "button", className: "prov" }, icon,
         el("span", { textContent: name }),
@@ -539,8 +548,8 @@
     const trips = computeTrips();
     $("tripCount").textContent = trips.length ? `${trips.length} chuyến` : "";
     if (!trips.length) return $("trips").replaceChildren(el("p", { className: "empty", textContent: "Chưa có chuyến đi nào." }));
-    $("trips").replaceChildren(...trips.map((t) => {
-      const img = el("img", { alt: "", loading: "lazy" });
+    $("trips").replaceChildren(...trips.map((t, i) => {
+      const img = lazyImg(i < 4, { alt: "" });
       setImg(img, t.cover, "thumb");
       const b = el("button", { type: "button", className: "trip" }, img,
         el("span", { className: "trip-info" },

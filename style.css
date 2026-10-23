@@ -349,19 +349,15 @@ strong, b, th, summary, .dlg-head strong { font-weight: 500; }
 .plan-when { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
 .tl-more { padding: 12px; text-align: center; color: var(--muted); font-size: 13px; }
 
-/* ---------- Viewer: dark, photo first ---------- */
-.viewer::backdrop { background: #0b0e13; }
-.viewer-box > img { border-radius: 6px; }
-.viewer-close, .viewer-download, .viewer-nav { border: 0; border-radius: 50%; background: rgba(255, 255, 255, .12); color: #fff; backdrop-filter: blur(6px); }
-.viewer-close:hover, .viewer-download:hover, .viewer-nav:hover { background: rgba(255, 255, 255, .22); }
-.viewer-info { background: #161b22; color: #e5e7eb; border: 1px solid rgba(255, 255, 255, .08); gap: 8px; }
-.viewer-info .muted, .photo-info summary, .photo-info dt { color: #9ca3af; }
-.viewer-info a { color: #93c5fd; }
+/* ---------- Viewer: light frosted overlay, photo first ---------- */
+.viewer::backdrop { background: color-mix(in srgb, var(--bg) 80%, transparent); backdrop-filter: blur(18px) saturate(1.1); -webkit-backdrop-filter: blur(18px) saturate(1.1); }
+.viewer-box > img { border-radius: 10px; box-shadow: 0 12px 40px rgba(15, 23, 42, .18); }
+.viewer-close, .viewer-download, .viewer-nav { border: 1px solid var(--border); border-radius: 50%; background: color-mix(in srgb, var(--bg) 85%, transparent); color: var(--fg); backdrop-filter: blur(6px); box-shadow: 0 2px 8px rgba(15, 23, 42, .08); }
+.viewer-close:hover, .viewer-download:hover, .viewer-nav:hover { background: var(--bg); }
+.viewer-info { background: color-mix(in srgb, var(--bg) 92%, transparent); color: var(--fg); border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(15, 23, 42, .08); gap: 8px; }
 .viewer-tools { gap: 6px; }
-.viewer-tools button, .viewer-tools select { height: 32px; font-size: 13px; color: #e5e7eb; background: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .14); }
-.viewer-tools button:hover { background: rgba(255, 255, 255, .14); }
-.viewer-tools select option { color: #0f172a; }
-.viewer-tools #deleteBtn { color: #fca5a5; }
+.viewer-tools button, .viewer-tools select { height: 32px; font-size: 13px; }
+.viewer-tools #deleteBtn { color: var(--warn); }
 @media (max-width: 640px) {
   .viewer-nav { width: 36px; height: 36px; }
   /* Tools in one swipeable row instead of a big grid */
@@ -402,3 +398,8 @@ strong, b, th, summary, .dlg-head strong { font-weight: 500; }
   @starting-style { .dlg[open]::backdrop { background: rgba(15, 23, 42, 0); } }
 }
 @media (prefers-reduced-motion: reduce) { .dlg, .dlg::backdrop { transition: none; } }
+
+/* Images fade in over a soft placeholder once loaded */
+.thumb img, .trip img, .prov-cover { opacity: 0; transition: opacity .25s ease, transform .25s; }
+.thumb img.ready, .trip img.ready, .prov-cover.ready { opacity: 1; }
+.prov-cover { background: var(--soft); }
