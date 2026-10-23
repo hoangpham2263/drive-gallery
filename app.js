@@ -493,9 +493,9 @@
   new ResizeObserver(markScroll).observe(sideBody);
   new MutationObserver(markScroll).observe(sideBody, { childList: true });
 
-  // Phones: the album shows 12 photos a page with ‹ › instead of a scroll area (nested scrolling jumps on iOS)
+  // Phones: the album shows 20 photos a page (4 × 5) with ‹ › instead of a scroll area (nested scrolling jumps on iOS)
   const isPhone = () => matchMedia("(max-width: 640px)").matches;
-  const PAGE = 12;
+  const PAGE = 20; // 4 columns × 5 rows
   let pageOf = { key: "", n: 0 };
   function albumGrid(list, key) {
     if (!isPhone() || list.length <= PAGE) return grid(list);
