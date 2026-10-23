@@ -485,6 +485,8 @@
   // Keep page scroll working over the side list until the list itself has something to scroll
   const sideBody = $("sideBody");
   const markScroll = () => {
+    // Album open: places + search stick to the top while the photos scroll
+    sideBody.classList.toggle("album", !!sideBody.querySelector(":scope > .grid"));
     sideBody.classList.toggle("scrolls", sideBody.scrollHeight > sideBody.clientHeight + 1);
     if (selecting) renderSelBar(); // "Chọn cả …" follows the album on screen
   };
