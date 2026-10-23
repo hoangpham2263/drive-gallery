@@ -432,3 +432,4 @@ strong, b, th, summary, .dlg-head strong { font-weight: 500; }
   .province-label span { transform: translate(-50%, -50%) scale(.7); }
   .island-label span { transform: translate(-50%, -50%) scale(.75); }
 }
+.prov-list { display: grid; gap: 6px; }

@@ -468,7 +468,7 @@
     const other = shown().filter((p) => !p.province);
     if (other.length) rows.push([OTHER, other]);
     if (!rows.length) return $("sideBody").replaceChildren(el("p", { className: "empty", textContent: "Chưa có nơi nào." }));
-    $("sideBody").replaceChildren(...rows.map(([name, list]) => {
+    const row = ([name, list]) => {
       const cover = name === OTHER ? null : coverOf(name);
       const icon = cover ? lazyImg(true, { className: "prov-cover", alt: "" }) : el("i", { style: `background:${name === OTHER || name === ABROAD ? cssVar("--muted") : colorOf(name)}` });
       if (cover) setImg(icon, cover, "thumb");
@@ -477,7 +477,9 @@
         el("small", { textContent: list.length ? `${list.length} ảnh` : placesIn(name).length ? `${placesIn(name).length} địa điểm` : "Đã đến" }));
       b.onclick = () => (name === OTHER ? showList(OTHER, newestFirst(list)) : selectProvince(name));
       return b;
-    }));
+    };
+    // 10 places a page on phones
+    $("sideBody").replaceChildren(paged(rows, 10, "places", (part) => el("div", { className: "prov-list" }, ...part.map(row))));
   }
 
   // Photos of the album open in the side panel (province / trip / Other); "Chọn tất cả" picks these
@@ -498,35 +500,40 @@
   // Phones: the album shows 20 photos a page (4 × 5) with ‹ › instead of a scroll area (nested scrolling jumps on iOS)
   const isPhone = () => matchMedia("(max-width: 640px)").matches;
   const PAGE = 20; // 4 columns × 5 rows
-  let pageOf = { key: "", n: 0 };
-  function albumGrid(list, key) {
-    if (!isPhone() || list.length <= PAGE) return grid(list);
-    if (pageOf.key !== key) pageOf = { key, n: 0 };
-    const pages = Math.ceil(list.length / PAGE);
-    pageOf.n = Math.min(pageOf.n, pages - 1);
+  // Phones: long lists split into numbered pages; render(slice) draws one page
+  const pageAt = {}; // current page per list key
+  function paged(items, per, key, render) {
+    if (!isPhone() || items.length <= per) return render(items, 0);
+    const pages = Math.ceil(items.length / per);
+    pageAt[key] = Math.min(pageAt[key] || 0, pages - 1);
     const wrap = el("div", { className: "album-pages" });
     const draw = () => {
-      const start = pageOf.n * PAGE;
-      const g = el("div", { className: "grid" }, ...list.slice(start, start + PAGE).map((p, i) => thumbButton(p, list, i < 9)));
-      const go = (n) => () => { pageOf.n = n; draw(); };
+      const cur = pageAt[key];
       const btn = (label, n, props = {}) => {
         const b = el("button", { type: "button", textContent: label, ...props });
-        b.onclick = go(n);
+        b.onclick = () => { pageAt[key] = n; draw(); };
         return b;
       };
-      // Numbered pages: first, last and two around the current one, "…" for the gaps
+      // Numbered pages: first, last and the ones next to the current page, "…" for the gaps
       const nums = [];
       for (let i = 0; i < pages; i++) {
-        if (i === 0 || i === pages - 1 || Math.abs(i - pageOf.n) <= 1) nums.push(i);
+        if (i === 0 || i === pages - 1 || Math.abs(i - cur) <= 1) nums.push(i);
         else if (nums.at(-1) !== "…") nums.push("…");
       }
-      wrap.replaceChildren(g, el("div", { className: "pager" },
-        btn("‹", pageOf.n - 1, { disabled: pageOf.n === 0, ariaLabel: "Trang trước" }),
-        ...nums.map((n) => (n === "…" ? el("span", { textContent: "…" }) : btn(String(n + 1), n, { className: n === pageOf.n ? "on" : "" }))),
-        btn("›", pageOf.n + 1, { disabled: pageOf.n >= pages - 1, ariaLabel: "Trang sau" })));
+      wrap.replaceChildren(render(items.slice(cur * per, cur * per + per), cur * per), el("div", { className: "pager" },
+        btn("‹", cur - 1, { disabled: cur === 0, ariaLabel: "Trang trước" }),
+        ...nums.map((n) => (n === "…" ? el("span", { textContent: "…" }) : btn(String(n + 1), n, { className: n === cur ? "on" : "" }))),
+        btn("›", cur + 1, { disabled: cur >= pages - 1, ariaLabel: "Trang sau" })));
     };
     draw();
     return wrap;
+  }
+  let albumKey = "";
+  function albumGrid(list, key) {
+    // A different album starts on page 1
+    if (albumKey !== key) { albumKey = key; pageAt.album = 0; }
+    return paged(list, PAGE, "album", (part, from) =>
+      el("div", { className: "grid" }, ...part.map((p, i) => thumbButton(p, list, from + i < 9))));
   }
 
   function showList(title, list, head) {
