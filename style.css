@@ -403,3 +403,9 @@ strong, b, th, summary, .dlg-head strong { font-weight: 500; }
 .thumb img, .trip img, .prov-cover { opacity: 0; transition: opacity .25s ease, transform .25s; }
 .thumb img.ready, .trip img.ready, .prov-cover.ready { opacity: 1; }
 .prov-cover { background: var(--soft); }
+
+/* Phones: one scroll only (the page). Nested scroll areas made iOS jump back up */
+@media (max-width: 640px) {
+  .side { max-height: none; }
+  .side-body, .side-body.scrolls { overflow: visible; max-height: none; overscroll-behavior: auto; }
+}
