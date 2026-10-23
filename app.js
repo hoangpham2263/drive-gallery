@@ -622,8 +622,12 @@
   function showViewer() {
     const p = current();
     if (!p) return;
-    $("viewerImg").removeAttribute("src");
-    setImg($("viewerImg"), p);
+    // Small thumbnail at once (usually cached), swapped for the full photo when it has loaded
+    const img = $("viewerImg");
+    setImg(img, p, "thumb");
+    const full = new Image();
+    full.onload = () => { if (current() === p) img.src = full.src; };
+    setImg(full, p);
     $("viewerImg").alt = p.title || "";
     const where = [p.place, p.province].filter(Boolean).join(", ");
     $("viewerText").replaceChildren(...[

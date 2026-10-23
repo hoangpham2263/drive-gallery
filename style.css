@@ -348,3 +348,26 @@ strong, b, th, summary, .dlg-head strong { font-weight: 500; }
 .plan-add { grid-template-columns: minmax(0, 1fr) 150px auto; }
 @media (max-width: 640px) { .plan-add { grid-template-columns: 1fr auto; } .plan-add input[type=month] { grid-column: 1; grid-row: 2; } }
 .tl-more { padding: 12px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ---------- Viewer: dark, photo first ---------- */
+.viewer::backdrop { background: #0b0e13; }
+.viewer-box > img { border-radius: 6px; }
+.viewer-close, .viewer-download, .viewer-nav { border: 0; border-radius: 50%; background: rgba(255, 255, 255, .12); color: #fff; backdrop-filter: blur(6px); }
+.viewer-close:hover, .viewer-download:hover, .viewer-nav:hover { background: rgba(255, 255, 255, .22); }
+.viewer-info { background: #161b22; color: #e5e7eb; border: 1px solid rgba(255, 255, 255, .08); gap: 8px; }
+.viewer-info .muted, .photo-info summary, .photo-info dt { color: #9ca3af; }
+.viewer-info a { color: #93c5fd; }
+.viewer-tools { gap: 6px; }
+.viewer-tools button, .viewer-tools select { height: 32px; font-size: 13px; color: #e5e7eb; background: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .14); }
+.viewer-tools button:hover { background: rgba(255, 255, 255, .14); }
+.viewer-tools select option { color: #0f172a; }
+.viewer-tools #deleteBtn { color: #fca5a5; }
+@media (max-width: 640px) {
+  .viewer-nav { width: 36px; height: 36px; }
+  /* Tools in one swipeable row instead of a big grid */
+  .viewer-tools { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .viewer-tools::-webkit-scrollbar { display: none; }
+  .viewer-tools select { flex: none; width: 150px; }
+  .viewer-tools button { flex: none; width: auto; padding: 0 12px; }
+  .viewer-info { padding: 10px; font-size: 13px; }
+}
