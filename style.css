@@ -421,3 +421,9 @@ strong, b, th, summary, .dlg-head strong { font-weight: 500; }
 .pager button { width: 34px; height: 34px; padding: 0; border-radius: 8px; font-size: 14px; }
 .pager button.on { background: var(--primary); border-color: var(--primary); color: #fff; }
 @media (max-width: 640px) { .album-pages .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; } }
+/* Phones: clear break between the map and the place list below it */
+@media (max-width: 640px) {
+  .map-layout { gap: 20px; }
+  .side { padding-top: 16px; border-top: 1px solid var(--border); }
+  .side-head { font-size: 15px; }
+}
