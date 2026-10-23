@@ -427,3 +427,8 @@ strong, b, th, summary, .dlg-head strong { font-weight: 500; }
   .side { padding-top: 16px; border-top: 1px solid var(--border); }
   .side-head { font-size: 15px; }
 }
+/* Phones: tiny map labels (scaled, since browsers keep a minimum font size) */
+@media (max-width: 640px) {
+  .province-label span { transform: translate(-50%, -50%) scale(.7); }
+  .island-label span { transform: translate(-50%, -50%) scale(.75); }
+}

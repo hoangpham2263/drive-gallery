@@ -243,14 +243,16 @@
   }
 
   // Small dots that grow a little on hover
-  const grow = (m) => m.on("mouseover", () => m.setRadius(4)).on("mouseout", () => m.setRadius(2.5));
+  // Dot size: smaller on phones so the map stays readable
+  const DOT = matchMedia("(max-width: 640px)").matches ? 1.6 : 2.5;
+  const grow = (m) => m.on("mouseover", () => m.setRadius(DOT + 1.5)).on("mouseout", () => m.setRadius(DOT));
 
   // One small pin per GPS photo
   function drawMarkers() {
     pinLayer.clearLayers();
     const sorted = newestFirst(shown().filter((p) => p.lat != null && p.lng != null));
     for (const p of sorted) {
-      const pin = L.circleMarker([p.lat, p.lng], { pane: "dots", radius: 2.5, color: "#fff", weight: 1, fillColor: cssVar("--primary"), fillOpacity: 1 });
+      const pin = L.circleMarker([p.lat, p.lng], { pane: "dots", radius: DOT, color: "#fff", weight: 1, fillColor: cssVar("--primary"), fillOpacity: 1 });
       pin.bindTooltip([p.place, fmtDate(photoDate(p))].filter(Boolean).join(" · "), { className: "tip", direction: "top" });
       pin.on("click", () => openViewer(sorted, sorted.indexOf(p)));
       grow(pin);
@@ -260,14 +262,14 @@
     placeLayer.clearLayers();
     for (const x of plans) {
       if (x.lat == null || x.lng == null) continue;
-      const m = L.circleMarker([x.lat, x.lng], { pane: "dots", radius: 2.5, color: "#f59e0b", weight: 1, fillColor: "#fde68a", fillOpacity: 1 });
+      const m = L.circleMarker([x.lat, x.lng], { pane: "dots", radius: DOT, color: "#f59e0b", weight: 1, fillColor: "#fde68a", fillOpacity: 1 });
       m.bindTooltip(`Sắp đi: ${x.name}`, { className: "tip", direction: "top" });
       grow(m);
       placeLayer.addLayer(m);
     }
     for (const x of places) {
       if (x.lat == null || x.lng == null) continue;
-      const m = L.circleMarker([x.lat, x.lng], { pane: "dots", radius: 2.5, color: cssVar("--muted"), weight: 1, fillColor: cssVar("--bg"), fillOpacity: 1 });
+      const m = L.circleMarker([x.lat, x.lng], { pane: "dots", radius: DOT, color: cssVar("--muted"), weight: 1, fillColor: cssVar("--bg"), fillOpacity: 1 });
       m.bindTooltip(x.name, { className: "tip", direction: "top" });
       if (x.province) m.on("click", () => selectProvince(x.province));
       grow(m);
