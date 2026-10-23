@@ -295,13 +295,22 @@ async function handle(req, env, ctx) {
       list = list.filter((p) => !pick.has(p.id));
     } else {
       const meta = cleanMeta(changes);
+      const moving = [];
       for (const it of items) {
         const before = `${it.province}|${(it.takenAt || "").slice(0, 4)}`;
         Object.assign(it, meta);
-        if (`${it.province}|${(it.takenAt || "").slice(0, 4)}` !== before) {
-          try { await moveFile(env, it.fileId, await photoFolder(env, it.province, it.takenAt)); } catch {}
-        }
+        if (`${it.province}|${(it.takenAt || "").slice(0, 4)}` !== before) moving.push(it);
       }
+      // Target folders first (one per province/year, created once), then every file moves in parallel
+      const folders = new Map();
+      for (const it of moving) {
+        const key = `${it.province}|${(it.takenAt || "").slice(0, 4)}`;
+        if (!folders.has(key)) folders.set(key, await photoFolder(env, it.province, it.takenAt).catch(() => null));
+      }
+      await Promise.all(moving.map((it) => {
+        const folder = folders.get(`${it.province}|${(it.takenAt || "").slice(0, 4)}`);
+        return folder ? moveFile(env, it.fileId, folder).catch(() => {}) : null;
+      }));
     }
     await writeList(env, list, ctx);
     return json(action === "delete" ? { deleted: items.length } : items);
@@ -396,9 +405,7 @@ async function handle(req, env, ctx) {
     const list = await readList(env);
     const item = list.find((p) => p.id === one[1]);
     if (!item) return json({ error: "Không tìm thấy ảnh." }, 404);
-    for (const id of [item.fileId, item.thumbId].filter(Boolean)) {
-      try { await drive(env, `/drive/v3/files/${id}`, { method: "DELETE" }); } catch {}
-    }
+    await Promise.all([item.fileId, item.thumbId].filter(Boolean).map((id) => drive(env, `/drive/v3/files/${id}`, { method: "DELETE" }).catch(() => {})));
     await writeList(env, list.filter((p) => p.id !== item.id), ctx);
     return json({ ok: true });
   }

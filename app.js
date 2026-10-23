@@ -343,9 +343,14 @@
       if (admin) {
         const done = el("button", { type: "button", textContent: "✓", title: "Đã đi: chuyển sang nơi đã đến" });
         done.onclick = async () => {
-          try { places = await api("/api/places", jsonBody("PUT", { places: [...places, x] })); }
-          catch (err) { return toast(err.message); }
-          savePlans(plans.filter((y) => y !== x), `✓ Đã đi ${x.name}`);
+          try {
+            [places, plans] = await Promise.all([
+              api("/api/places", jsonBody("PUT", { places: [...places, x] })),
+              api("/api/plans", jsonBody("PUT", { places: plans.filter((y) => y !== x) })),
+            ]);
+            renderAll();
+            toast(`✓ Đã đi ${x.name}`);
+          } catch (err) { toast(err.message); }
         };
         const del = el("button", { type: "button", textContent: "✕", title: "Bỏ" });
         del.onclick = () => savePlans(plans.filter((y) => y !== x), `Đã bỏ ${x.name}`);
@@ -757,7 +762,8 @@
     renderPlans();
   }
 
-  async function checkAdmin() {
+  // reload: fetch the list again to include private photos (not needed at start, the first load already sent the key)
+  async function checkAdmin(reload = true) {
     if (!adminKey) return renderAdmin(null);
     let s;
     try { s = await api("/api/status"); }
@@ -776,7 +782,7 @@
     const wasAdmin = admin;
     renderAdmin(s);
     // Owner also sees private photos
-    if (!wasAdmin) { try { photos = await api("/api/photos"); renderAll(); } catch {} }
+    if (!wasAdmin && reload) { try { photos = await api("/api/photos"); renderAll(); } catch {} }
     return s;
   }
 
@@ -1124,23 +1130,27 @@
 
   // ---------- start ----------
   async function start() {
+    // Map shapes, album data and the admin check all load at the same time
+    const dataP = Promise.all([
+      api("/api/photos"),
+      api("/api/visited").catch(() => []),
+      api("/api/meta").catch(() => ({ trips: {}, covers: {} })),
+      api("/api/places").catch(() => []),
+      api("/api/plans").catch(() => []),
+    ]);
+    dataP.catch(() => {});
+    const adminP = checkAdmin(false);
     geo = await (await fetch("vn-34.json")).json();
     provinces = geo.features.map((f) => f.properties.name).sort((a, b) => a.localeCompare(b, "vi"));
     provinceOptions($("selProvince"), "", "Chọn tỉnh…");
     provinceOptions($("moveProvince"), "", "Other");
     initMap();
     try {
-      [photos, manual, meta, places, plans] = await Promise.all([
-        api("/api/photos"),
-        api("/api/visited").catch(() => []),
-        api("/api/meta").catch(() => ({ trips: {}, covers: {} })),
-        api("/api/places").catch(() => []),
-        api("/api/plans").catch(() => []),
-      ]);
+      [photos, manual, meta, places, plans] = await dataP;
     } catch (err) {
       toast(`Không tải được ảnh: ${err.message}`);
     }
-    await checkAdmin();
+    await adminP;
     renderAll();
     $("sideBack").onclick = () => {
       selected = null;
