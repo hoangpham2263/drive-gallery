@@ -453,7 +453,7 @@
       const spots = placesIn(selected);
       $("sideBody").replaceChildren(...[
         spots.length || admin ? placeBox(selected, spots) : null,
-        list.length ? grid(list) : ticked || spots.length ? null : el("p", { className: "empty", textContent: "Chưa có ảnh." }),
+        list.length ? albumGrid(list, selected) : ticked || spots.length ? null : el("p", { className: "empty", textContent: "Chưa có ảnh." }),
       ].filter(Boolean));
       return;
     }
@@ -493,12 +493,35 @@
   new ResizeObserver(markScroll).observe(sideBody);
   new MutationObserver(markScroll).observe(sideBody, { childList: true });
 
+  // Phones: the album shows 12 photos a page with ‹ › instead of a scroll area (nested scrolling jumps on iOS)
+  const isPhone = () => matchMedia("(max-width: 640px)").matches;
+  const PAGE = 12;
+  let pageOf = { key: "", n: 0 };
+  function albumGrid(list, key) {
+    if (!isPhone() || list.length <= PAGE) return grid(list);
+    if (pageOf.key !== key) pageOf = { key, n: 0 };
+    const pages = Math.ceil(list.length / PAGE);
+    pageOf.n = Math.min(pageOf.n, pages - 1);
+    const wrap = el("div", { className: "album-pages" });
+    const draw = () => {
+      const start = pageOf.n * PAGE;
+      const g = el("div", { className: "grid" }, ...list.slice(start, start + PAGE).map((p, i) => thumbButton(p, list, i < 9)));
+      const prev = el("button", { type: "button", className: "icon", textContent: "‹", disabled: pageOf.n === 0, ariaLabel: "Trang trước" });
+      const next = el("button", { type: "button", className: "icon", textContent: "›", disabled: pageOf.n >= pages - 1, ariaLabel: "Trang sau" });
+      prev.onclick = () => { pageOf.n--; draw(); };
+      next.onclick = () => { pageOf.n++; draw(); };
+      wrap.replaceChildren(g, el("div", { className: "pager" }, prev, el("span", { textContent: `${pageOf.n + 1}/${pages}` }), next));
+    };
+    draw();
+    return wrap;
+  }
+
   function showList(title, list, head) {
     selected = title;
     $("sideBack").hidden = false;
     $("sideTitle").textContent = `${title} · ${list.length} ảnh`;
     albumList = list;
-    $("sideBody").replaceChildren(...(head || []), grid(list));
+    $("sideBody").replaceChildren(...(head || []), albumGrid(list, title));
   }
 
   // ---------- trips ----------

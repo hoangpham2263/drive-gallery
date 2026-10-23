@@ -413,6 +413,8 @@ strong, b, th, summary, .dlg-head strong { font-weight: 500; }
 /* Album in the side panel: places + search stick to the top, the photos scroll under them */
 .side-body.album > .place-box, .side-body.album > .chip-row, .side-body.album > .trip-head { position: sticky; top: 0; z-index: 2; background: var(--bg); padding-bottom: 8px; }
 @media (max-width: 640px) {
-  .side-body.album { overflow: auto; max-height: 75vh; }
-  .side-body.album.scrolls { overscroll-behavior: contain; }
+  .side-body.album, .side-body.album.scrolls { overflow: visible; max-height: none; overscroll-behavior: auto; }
+  .side-body.album > .place-box, .side-body.album > .chip-row, .side-body.album > .trip-head { position: static; }
 }
+.album-pages { display: grid; gap: 8px; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 13px; color: var(--muted); }
