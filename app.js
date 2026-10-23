@@ -816,8 +816,8 @@
       $("settingsBtn").classList.toggle("warn", !status.connected);
       $("settingsDlg").classList.toggle("warn", !status.connected);
       $("adminText").textContent = status.connected
-        ? `Ảnh lưu vào Google Drive: ${status.email || "đã kết nối"}`
-        : "Chưa kết nối Google Drive";
+        ? "Đã kết nối"
+        : "Chưa kết nối";
       $("connectBtn").textContent = status.connected ? "Đổi tài khoản Drive" : "Kết nối Drive";
       $("driveLink").hidden = !status.folder;
       if (status.folder) $("driveLink").href = `https://drive.google.com/drive/folders/${status.folder}`;
