@@ -8,7 +8,7 @@
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <link rel="stylesheet" href="style.css?v=37" />
+    <link rel="stylesheet" href="style.css?v=38" />
   </head>
   <body>
     <main class="wrap">
@@ -29,6 +29,7 @@
           <div>
             <h2>Bản đồ hành trình</h2>
             <p class="muted small" id="visitedText">Đang tải…</p>
+            <div id="years" class="years" hidden></div>
           </div>
           <div class="actions" id="adminActions" hidden>
             <button id="selectBtn" type="button">Chọn nhiều</button>
@@ -175,6 +176,7 @@
             <select id="moveProvince" aria-label="Đổi địa điểm"></select>
             <button id="coverProvince" type="button">Làm ảnh bìa tỉnh</button>
             <button id="coverTrip" type="button">Làm ảnh bìa chuyến</button>
+            <button id="pinPlace" type="button">Ghim nơi chụp</button>
             <button id="togglePrivate" type="button">Chỉ mình xem</button>
             <button id="deleteBtn" type="button">Xóa ảnh</button>
           </div>
@@ -190,6 +192,6 @@
     <script src="vendor/exifr.full.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
-    <script src="app.js?v=48"></script>
+    <script src="app.js?v=49"></script>
   </body>
 </html>

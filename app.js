@@ -20,6 +20,9 @@
   };
 
   let photos = [];
+  let year = ""; // year filter, "" = all
+  // Photos of the chosen year (all when no filter): what the map, trips, stats and timeline show
+  const shown = () => (year ? photos.filter((p) => (p.takenAt || "").startsWith(year)) : photos);
   let manual = []; // provinces ticked as visited without photos
   let places = []; // specific places visited: { name, province, lat, lng }
   let plans = []; // places to go next, same shape
@@ -59,7 +62,7 @@
   const slug = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const byProvince = () => {
     const m = new Map();
-    for (const p of photos) if (p.province) m.set(p.province, [...(m.get(p.province) || []), p]);
+    for (const p of shown()) if (p.province) m.set(p.province, [...(m.get(p.province) || []), p]);
     return m;
   };
   const newestFirst = (list) => [...list].sort((a, b) => photoDate(b).localeCompare(photoDate(a)));
@@ -74,7 +77,7 @@
     if (adminKey) headers["x-admin-key"] = adminKey;
     const r = await fetch(API + path, { ...opts, headers });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || `Lỗi ${r.status}`);
+    if (!r.ok) throw Object.assign(new Error(data.error || `Lỗi ${r.status}`), { status: r.status });
     return data;
   }
   const jsonBody = (method, body) => ({ method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -123,7 +126,7 @@
   // ---------- trips ----------
   // Consecutive photos in the same province, at most TRIP_GAP_DAYS apart, form one trip
   function computeTrips() {
-    const dated = photos.filter((p) => p.takenAt && p.province).sort((a, b) => a.takenAt.localeCompare(b.takenAt));
+    const dated = shown().filter((p) => p.takenAt && p.province).sort((a, b) => a.takenAt.localeCompare(b.takenAt));
     const trips = [];
     let cur = null;
     for (const p of dated) {
@@ -169,7 +172,8 @@
   }
   const placesIn = (province) => places.filter((x) => x.province === province);
   // Visited = has photos, a pinned place, or ticked by hand
-  const visitedSet = () => new Set([...byProvince().keys(), ...manual, ...places.map((x) => x.province)].filter((n) => provinces.includes(n)));
+  // With a year filter, only provinces with photos from that year
+  const visitedSet = () => new Set([...byProvince().keys(), ...(year ? [] : [...manual, ...places.map((x) => x.province)])].filter((n) => provinces.includes(n)));
 
   function styleFor(feature) {
     const hasPhotos = byProvince().has(feature.properties.name);
@@ -244,7 +248,7 @@
   // One small pin per GPS photo
   function drawMarkers() {
     pinLayer.clearLayers();
-    const sorted = newestFirst(photos.filter((p) => p.lat != null && p.lng != null));
+    const sorted = newestFirst(shown().filter((p) => p.lat != null && p.lng != null));
     for (const p of sorted) {
       const pin = L.circleMarker([p.lat, p.lng], { pane: "dots", radius: 2.5, color: "#fff", weight: 1, fillColor: cssVar("--primary"), fillOpacity: 1 });
       pin.bindTooltip([p.place, fmtDate(photoDate(p))].filter(Boolean).join(" · "), { className: "tip", direction: "top" });
@@ -337,9 +341,13 @@
     try { plans = await api("/api/plans", jsonBody("PUT", { places: next })); renderAll(); toast(msg); }
     catch (err) { toast(err.message); }
   }
+  const monthText = (m) => (m ? `${+m.slice(5)}/${m.slice(0, 4)}` : "");
   function renderPlans() {
-    const chips = el("div", { className: "chip-row" }, ...plans.map((x) => {
-      const chip = el("span", { className: "chip plan" }, el("span", { textContent: x.name }), x.province ? el("small", { textContent: x.province }) : null);
+    // Soonest planned month first, places without a date last
+    const sorted = [...plans].sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
+    const chips = el("div", { className: "chip-row" }, ...sorted.map((x) => {
+      const chip = el("span", { className: "chip plan" }, el("span", { textContent: x.name }),
+        x.date || x.province ? el("small", { textContent: [monthText(x.date), x.province].filter(Boolean).join(" · ") }) : null);
       if (admin) {
         const done = el("button", { type: "button", textContent: "✓", title: "Đã đi: chuyển sang nơi đã đến" });
         done.onclick = async () => {
@@ -361,6 +369,7 @@
     if (!admin) return $("plans").replaceChildren(chips);
     const input = el("input", { placeholder: "Thêm nơi muốn đi, vd: Phú Quốc, Sa Pa…", autocomplete: "off" });
     const go = el("button", { type: "button", textContent: "Tìm" });
+    const when = el("input", { type: "month", title: "Dự định đi (không bắt buộc)", "aria-label": "Dự định đi" });
     const results = el("div", { className: "place-results" });
     const search = async () => {
       const q = input.value.trim();
@@ -368,16 +377,16 @@
       results.replaceChildren(el("p", { className: "muted small", textContent: "Đang tìm…" }));
       const found = (await searchSpots(q)).filter((r) => r.province).slice(0, 5);
       const plain = el("button", { type: "button", className: "link", textContent: `Thêm "${q}" không ghim vị trí` });
-      plain.onclick = () => savePlans([...plans, { name: q, province: "", lat: null, lng: null }], `✓ Đã thêm ${q}`);
+      plain.onclick = () => savePlans([...plans, { name: q, province: "", lat: null, lng: null, date: when.value || null }], `✓ Đã thêm ${q}`);
       results.replaceChildren(...found.map((r) => {
         const b = el("button", { type: "button" }, el("span", { textContent: r.label }), el("small", { textContent: r.province }));
-        b.onclick = () => savePlans([...plans, { name: q, province: r.province, lat: r.lat, lng: r.lng }], `✓ Đã thêm ${q}`);
+        b.onclick = () => savePlans([...plans, { name: q, province: r.province, lat: r.lat, lng: r.lng, date: when.value || null }], `✓ Đã thêm ${q}`);
         return b;
       }), ...(found.length ? [] : [el("p", { className: "muted small", textContent: `Không thấy "${q}".` })]), plain);
     };
     go.onclick = search;
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); search(); } });
-    $("plans").replaceChildren(...[plans.length ? chips : null, el("div", { className: "place-add" }, input, go), results].filter(Boolean));
+    $("plans").replaceChildren(...[plans.length ? chips : null, el("div", { className: "place-add plan-add" }, input, when, go), results].filter(Boolean));
   }
 
   $("settingsBtn").onclick = () => $("settingsDlg").showModal();
@@ -432,13 +441,13 @@
       ].filter(Boolean));
       return;
     }
-    if (selected === OTHER) return showList(OTHER, newestFirst(photos.filter((p) => !p.province)));
+    if (selected === OTHER) return showList(OTHER, newestFirst(shown().filter((p) => !p.province)));
     selected = null;
     $("sideTitle").textContent = "Nơi đã đến";
     const rows = [...groups.entries()].filter(([n]) => n !== ABROAD).sort((a, b) => b[1].length - a[1].length);
     for (const n of visitedSet()) if (!groups.has(n)) rows.push([n, []]);
     if (groups.get(ABROAD)) rows.push([ABROAD, groups.get(ABROAD)]);
-    const other = photos.filter((p) => !p.province);
+    const other = shown().filter((p) => !p.province);
     if (other.length) rows.push([OTHER, other]);
     if (!rows.length) return $("sideBody").replaceChildren(el("p", { className: "empty", textContent: "Chưa có nơi nào." }));
     $("sideBody").replaceChildren(...rows.map(([name, list]) => {
@@ -473,7 +482,10 @@
     layer.setStyle(styleFor);
     const share = el("button", { type: "button", textContent: "Sao chép link" });
     share.onclick = async () => {
-      try { await navigator.clipboard.writeText(`${location.origin}${location.pathname}#trip=${t.key}`); toast("✓ Đã sao chép link chuyến đi"); }
+      // Link through the Worker's preview page, so chat apps show the cover photo and trip name
+      const q = new URLSearchParams({ t: t.key, n: t.name, d: `${tripRange(t)} · ${t.photos.length} ảnh` });
+      if (t.cover && !t.cover.private) q.set("c", t.cover.id);
+      try { await navigator.clipboard.writeText(`${API}/share?${q}`); toast("✓ Đã sao chép link chuyến đi"); }
       catch { toast("Không sao chép được"); }
     };
     const edit = admin ? el("button", { type: "button", textContent: "Sửa" }) : null;
@@ -528,11 +540,20 @@
   // ---------- stats ----------
   function renderStats() {
     const visited = visitedSet();
-    $("visitedText").textContent = `Đã đến ${visited.size}/34 tỉnh, thành phố · ${photos.length} ảnh`;
+    const list = shown();
+    $("visitedText").textContent = `Đã đến ${visited.size}/34 tỉnh, thành phố · ${list.length} ảnh${year ? ` · năm ${year}` : ""}`;
+    // Year chips, only when photos span more than one year
+    const years = [...new Set(photos.map((p) => (p.takenAt || "").slice(0, 4)).filter(Boolean))].sort().reverse();
+    $("years").hidden = years.length < 2;
+    $("years").replaceChildren(...["", ...years].map((y) => {
+      const b = el("button", { type: "button", className: y === year ? "on" : "", textContent: y || "Tất cả" });
+      b.onclick = () => { year = y; selected = null; renderAll(); };
+      return b;
+    }));
     $("visitedBar").style.width = `${(visited.size / 34) * 100}%`;
-    $("photoCount").textContent = photos.length ? `${photos.length} ảnh` : "";
+    $("photoCount").textContent = list.length ? `${list.length} ảnh` : "";
     const items = [
-      [photos.length, "Ảnh"],
+      [list.length, "Ảnh"],
       [computeTrips().length, "Chuyến đi"],
       [`${visited.size}/34`, "Tỉnh, thành phố"],
       [places.length, "Địa điểm đã đến"],
@@ -542,11 +563,16 @@
   }
 
   // ---------- timeline ----------
+  // Long albums: show 60 photos, then 60 more each time the end comes into view
+  const TL_STEP = 60;
+  let tlLimit = TL_STEP, tlObserver;
   function renderTimeline() {
-    if (!photos.length) return $("timeline").replaceChildren(el("p", { className: "empty", textContent: "Chưa có ảnh nào." }));
-    const sorted = newestFirst(photos);
+    tlObserver?.disconnect();
+    const all = shown();
+    if (!all.length) return $("timeline").replaceChildren(el("p", { className: "empty", textContent: "Chưa có ảnh nào." }));
+    const sorted = newestFirst(all);
     const months = new Map();
-    for (const p of sorted) {
+    for (const p of sorted.slice(0, tlLimit)) {
       const d = new Date(photoDate(p));
       const month = isNaN(d) ? "Không rõ thời gian" : `Tháng ${d.getMonth() + 1}/${d.getFullYear()}`;
       const day = isNaN(d) ? "" : fmtDate(photoDate(p));
@@ -563,6 +589,16 @@
             el("p", { className: "tl-day-head" }, el("span", { textContent: day || "Không rõ ngày" }), places ? el("small", { textContent: ` · ${places}` }) : null),
             el("div", { className: "grid" }, ...list.map((p) => thumbButton(p, sorted))));
         }))));
+    if (sorted.length > tlLimit) {
+      const more = el("div", { className: "tl-more", textContent: `Đang tải thêm… (${tlLimit}/${sorted.length})` });
+      $("timeline").append(more);
+      tlObserver = new IntersectionObserver((entries) => {
+        if (!entries[0].isIntersecting) return;
+        tlLimit += TL_STEP;
+        renderTimeline();
+      }, { rootMargin: "400px" });
+      tlObserver.observe(more);
+    }
   }
 
   function renderAll() {
@@ -601,6 +637,7 @@
     $("viewerTools").hidden = !admin;
     if (admin) {
       $("moveProvince").value = p.province || "";
+      $("pinPlace").hidden = p.lat == null;
       $("coverProvince").hidden = !p.province;
       $("coverTrip").hidden = !computeTrips().some((t) => t.photos.includes(p));
       $("togglePrivate").textContent = p.private ? "Công khai ảnh này" : "Chỉ mình xem";
@@ -650,6 +687,16 @@
       showViewer();
       toast(`✓ Đã chuyển sang ${e.target.value || OTHER}`);
     } catch (err) { toast(err.message); }
+  };
+  // Save where this photo was taken (its GPS) as a visited place
+  $("pinPlace").onclick = async () => {
+    const p = current();
+    if (p.lat == null) return;
+    const name = p.exif?.gpsPlace || (await placeName(p.lat, p.lng)) || p.place;
+    if (!name) return toast("Không đọc được tên nơi chụp");
+    const province = provinceAt(p.lat, p.lng) || p.province || "";
+    if (places.some((x) => x.name === name && x.province === province)) return toast(`${name} đã có trong địa điểm`);
+    await savePlaces([...places, { name, province, lat: p.lat, lng: p.lng }], `✓ Đã ghim ${name}`);
   };
   $("deleteBtn").onclick = async () => {
     const p = current();
@@ -767,7 +814,14 @@
     if (!adminKey) return renderAdmin(null);
     let s;
     try { s = await api("/api/status"); }
-    catch {
+    catch (err) {
+      // Locked out after too many wrong passwords
+      if (err.status === 429) {
+        adminKey = null;
+        store.set("mem-admin", null);
+        renderAdmin(null);
+        return toast(err.message, 4000);
+      }
       // Network hiccup (sleep, wifi, Worker redeploy): stay signed in, try again on next focus
       return admin ? { admin: true } : undefined;
     }
@@ -807,7 +861,19 @@
   };
   $("connectBtn").onclick = connectDrive;
   // Coming back from the Google tab: refresh the Drive status
-  window.addEventListener("focus", () => adminKey && checkAdmin());
+  // Back to the tab: pick up changes made in another tab or device (at most every 20 s)
+  let lastSync = Date.now();
+  async function syncData() {
+    if (Date.now() - lastSync < 20000 || !geo) return;
+    lastSync = Date.now();
+    try {
+      const next = await Promise.all([api("/api/photos"), api("/api/visited"), api("/api/meta"), api("/api/places"), api("/api/plans")]);
+      if (JSON.stringify(next) === JSON.stringify([photos, manual, meta, places, plans])) return;
+      [photos, manual, meta, places, plans] = next;
+      renderAll();
+    } catch {}
+  }
+  window.addEventListener("focus", () => { if (adminKey) checkAdmin(); syncData(); });
 
   // ---------- backup ----------
   // ---------- download ----------
@@ -829,18 +895,32 @@
         return toast("✓ Đã tải ảnh");
       }
       if (!window.JSZip) return toast("Đang chuẩn bị, thử lại sau vài giây");
-      const zip = new JSZip();
+      // Big albums are split into ~500 MB parts, so the browser never holds GBs in memory
+      const PART = 500 * 1048576;
+      let zip = new JSZip(), bytes = 0, part = 0, done = 0, failed = 0;
       if (extra) zip.file("memories.json", extra);
-      let done = 0, failed = 0;
+      const flush = async (last) => {
+        if (!bytes && !extra) return;
+        part++;
+        toast("Đang nén…", 60000);
+        const name = last && part === 1 ? zipName : zipName.replace(/\.zip$/, `-phan-${part}.zip`);
+        download(await zip.generateAsync({ type: "blob" }), name);
+        zip = new JSZip(); bytes = 0; extra = null;
+      };
       toast(`Đang tải ${list.length} ảnh…`, 60000);
-      await pool(list, 6, async (p) => {
-        try { zip.file(`${p.province || OTHER}/${(p.takenAt || "").slice(0, 4) || OTHER}/${fileName(p)}`, await fetchPhoto(p)); }
-        catch { failed++; }
-        toast(`Đang tải ${++done}/${list.length} ảnh…`, 60000);
-      });
-      toast("Đang nén…", 60000);
-      download(await zip.generateAsync({ type: "blob" }), zipName);
-      toast(failed ? `Đã tải ${list.length - failed}/${list.length} ảnh, ${failed} ảnh lỗi` : `✓ Đã tải ${list.length} ảnh`);
+      for (let i = 0; i < list.length; i += 12) {
+        await pool(list.slice(i, i + 12), 6, async (p) => {
+          try {
+            const blob = await fetchPhoto(p);
+            bytes += blob.size;
+            zip.file(`${p.province || OTHER}/${(p.takenAt || "").slice(0, 4) || OTHER}/${fileName(p)}`, blob);
+          } catch { failed++; }
+          toast(`Đang tải ${++done}/${list.length} ảnh…`, 60000);
+        });
+        if (bytes >= PART && i + 12 < list.length) await flush(false);
+      }
+      await flush(true);
+      toast(failed ? `Đã tải ${list.length - failed}/${list.length} ảnh, ${failed} ảnh lỗi` : `✓ Đã tải ${list.length} ảnh${part > 1 ? ` (${part} file ZIP)` : ""}`);
     } catch (err) { toast(err.message); }
     finally { downloading = false; }
   }
@@ -1002,7 +1082,10 @@
     const known = new Set([...photos, ...pending].map((p) => p.hash).filter(Boolean));
     let skipped = 0, done = 0;
     const note = $("upSummary");
-    note.textContent = `Đang đọc ${files.length} ảnh…`;
+    // iPhone HEIC photos are converted in the browser, which takes a while: say so
+    const heic = files.filter((f) => /heic|heif/i.test(f.type) || /\.(heic|heif)$/i.test(f.name)).length;
+    const reading = () => `Đang đọc ảnh ${done}/${files.length}…${heic ? ` (chuyển ${heic} ảnh HEIC, hơi lâu)` : ""}`;
+    note.textContent = reading();
     const ready = await pool(files, Math.max(2, Math.min(6, navigator.hardwareConcurrency || 4)), async (f) => {
       try {
         const hash = await fingerprint(f);
@@ -1010,7 +1093,7 @@
         known.add(hash);
         return await prepare(f, hash);
       } catch (err) { toast(`${f.name}: ${err.message}`); return null; }
-      finally { note.textContent = `Đang đọc ảnh ${++done}/${files.length}…`; }
+      finally { done++; note.textContent = reading(); }
     });
     pending.push(...ready.filter(Boolean));
     if (skipped) toast(`Bỏ qua ${skipped} ảnh đã có trong album`, 3000);

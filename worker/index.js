@@ -155,6 +155,33 @@ async function handle(req, env, ctx) {
   const url = new URL(req.url);
   const path = url.pathname;
 
+  // Wrong password 5 times from one address: locked out for 15 minutes
+  const sentKey = req.headers.get("x-admin-key") || (path === "/oauth/start" ? url.searchParams.get("key") : "");
+  if (sentKey) {
+    const ip = req.headers.get("cf-connecting-ip") || "unknown";
+    const fails = Number(await env.MEM.get(`fail:${ip}`)) || 0;
+    if (fails >= 5) return json({ error: "Nhập sai quá nhiều lần, thử lại sau 15 phút." }, 429);
+    if (!sameKey(sentKey, env.ADMIN_PASSWORD || "")) ctx.waitUntil(env.MEM.put(`fail:${ip}`, String(fails + 1), { expirationTtl: 900 }));
+    else if (fails) ctx.waitUntil(env.MEM.delete(`fail:${ip}`));
+  }
+
+  // Link preview page for a shared trip (Zalo, Messenger… read these tags), then on to the site
+  if (path === "/share" && req.method === "GET") {
+    const esc = (v) => String(v || "").slice(0, 200).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+    const trip = (url.searchParams.get("t") || "").replace(/[^\w-]/g, "");
+    const cover = (url.searchParams.get("c") || "").replace(/[^\w-]/g, "");
+    const to = `https://hoangpham.is-a.dev/memories/${trip ? `#trip=${trip}` : ""}`;
+    const title = esc(url.searchParams.get("n") || "Hoang's Memories");
+    const desc = esc(url.searchParams.get("d") || "Bản đồ hành trình");
+    return new Response(`<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<title>${title}</title>
+<meta property="og:type" content="website"><meta property="og:title" content="${title}"><meta property="og:description" content="${desc}">
+${cover ? `<meta property="og:image" content="${url.origin}/api/img/${cover}"><meta name="twitter:card" content="summary_large_image">` : ""}
+<meta property="og:url" content="${esc(to)}"><meta http-equiv="refresh" content="0;url=${esc(to)}">
+</head><body><script>location.replace(${JSON.stringify(to)})</script><a href="${esc(to)}">${title}</a></body></html>`,
+      { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" } });
+  }
+
   if (path === "/oauth/start") {
     if (!sameKey(url.searchParams.get("key") || "", env.ADMIN_PASSWORD || "")) return new Response("Sai mật khẩu.", { status: 401 });
     const q = new URLSearchParams({
@@ -265,6 +292,8 @@ async function handle(req, env, ctx) {
       province: String(x.province || "").slice(0, 60),
       lat: num(x.lat),
       lng: num(x.lng),
+      // Planned month for places to go next (YYYY-MM)
+      date: /^\d{4}-\d{2}$/.test(x.date || "") ? x.date : null,
     })).filter((x) => x.name);
     await env.MEM.put(spots, JSON.stringify(clean));
     return json(clean);

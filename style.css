@@ -339,3 +339,12 @@ strong, b, th, summary, .dlg-head strong { font-weight: 500; }
   .viewer-tools select { grid-column: 1 / -1; width: 100%; }
   .viewer-tools button { width: 100%; font-size: 13px; }
 }
+
+/* Year filter */
+.years { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.years button { height: 28px; padding: 0 10px; border-radius: 999px; font-size: 13px; }
+.years button.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+/* Places to go: name, month, search */
+.plan-add { grid-template-columns: minmax(0, 1fr) 150px auto; }
+@media (max-width: 640px) { .plan-add { grid-template-columns: 1fr auto; } .plan-add input[type=month] { grid-column: 1; grid-row: 2; } }
+.tl-more { padding: 12px; text-align: center; color: var(--muted); font-size: 13px; }
