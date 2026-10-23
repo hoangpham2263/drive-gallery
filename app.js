@@ -386,7 +386,7 @@
     };
     go.onclick = search;
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); search(); } });
-    $("plans").replaceChildren(...[plans.length ? chips : null, el("div", { className: "place-add plan-add" }, input, when, go), results].filter(Boolean));
+    $("plans").replaceChildren(...[plans.length ? chips : null, el("div", { className: "place-add plan-add" }, input, go, el("label", { className: "plan-when" }, el("span", { textContent: "Tháng dự định" }), when)), results].filter(Boolean));
   }
 
   $("settingsBtn").onclick = () => $("settingsDlg").showModal();

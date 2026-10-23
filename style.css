@@ -345,8 +345,8 @@ strong, b, th, summary, .dlg-head strong { font-weight: 500; }
 .years button { height: 28px; padding: 0 10px; border-radius: 999px; font-size: 13px; }
 .years button.on { background: var(--primary); border-color: var(--primary); color: #fff; }
 /* Places to go: name, month, search */
-.plan-add { grid-template-columns: minmax(0, 1fr) 150px auto; }
-@media (max-width: 640px) { .plan-add { grid-template-columns: 1fr auto; } .plan-add input[type=month] { grid-column: 1; grid-row: 2; } }
+.plan-add { grid-template-columns: minmax(0, 1fr) auto; }
+.plan-when { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
 .tl-more { padding: 12px; text-align: center; color: var(--muted); font-size: 13px; }
 
 /* ---------- Viewer: dark, photo first ---------- */
@@ -390,12 +390,13 @@ strong, b, th, summary, .dlg-head strong { font-weight: 500; }
 @media (max-width: 640px) {
   .top { position: sticky; top: 0; z-index: 1100; margin: -16px -16px 0; padding: 10px 16px; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
 
-  .dlg { transition: transform .28s cubic-bezier(.2, .8, .2, 1), overlay .28s allow-discrete, display .28s allow-discrete; transform: translateY(100%); }
+  /* Every dialog opens full screen like the menu, sliding in from the left */
+  .dlg { width: 100%; max-width: 100%; height: 100dvh; max-height: 100dvh; margin: 0; border: 0; border-radius: 0;
+    transition: transform .28s cubic-bezier(.2, .8, .2, 1), overlay .28s allow-discrete, display .28s allow-discrete; transform: translateX(-100%); }
   .dlg[open] { transform: none; }
-  @starting-style { .dlg[open] { transform: translateY(100%); } }
-  .dlg-menu { transform: translateX(-100%); }
-  @starting-style { .dlg-menu[open] { transform: translateX(-100%); } }
-
+  @starting-style { .dlg[open] { transform: translateX(-100%); } }
+  .dlg .dlg-box { min-height: 100%; align-content: start; gap: 14px; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .dlg .vis-list, .dlg .up-grid { max-height: none; }
   .dlg::backdrop { transition: background .28s, overlay .28s allow-discrete, display .28s allow-discrete; background: rgba(15, 23, 42, 0); }
   .dlg[open]::backdrop { background: rgba(15, 23, 42, .6); }
   @starting-style { .dlg[open]::backdrop { background: rgba(15, 23, 42, 0); } }
