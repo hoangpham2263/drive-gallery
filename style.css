@@ -417,4 +417,6 @@ strong, b, th, summary, .dlg-head strong { font-weight: 500; }
   .side-body.album > .place-box, .side-body.album > .chip-row, .side-body.album > .trip-head { position: static; }
 }
 .album-pages { display: grid; gap: 8px; }
-.pager { display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 13px; color: var(--muted); }
+.pager { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.pager button { width: 34px; height: 34px; padding: 0; border-radius: 8px; font-size: 14px; }
+.pager button.on { background: var(--primary); border-color: var(--primary); color: #fff; }

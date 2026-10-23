@@ -506,11 +506,22 @@
     const draw = () => {
       const start = pageOf.n * PAGE;
       const g = el("div", { className: "grid" }, ...list.slice(start, start + PAGE).map((p, i) => thumbButton(p, list, i < 9)));
-      const prev = el("button", { type: "button", className: "icon", textContent: "‹", disabled: pageOf.n === 0, ariaLabel: "Trang trước" });
-      const next = el("button", { type: "button", className: "icon", textContent: "›", disabled: pageOf.n >= pages - 1, ariaLabel: "Trang sau" });
-      prev.onclick = () => { pageOf.n--; draw(); };
-      next.onclick = () => { pageOf.n++; draw(); };
-      wrap.replaceChildren(g, el("div", { className: "pager" }, prev, el("span", { textContent: `${pageOf.n + 1}/${pages}` }), next));
+      const go = (n) => () => { pageOf.n = n; draw(); };
+      const btn = (label, n, props = {}) => {
+        const b = el("button", { type: "button", textContent: label, ...props });
+        b.onclick = go(n);
+        return b;
+      };
+      // Numbered pages: first, last and two around the current one, "…" for the gaps
+      const nums = [];
+      for (let i = 0; i < pages; i++) {
+        if (i === 0 || i === pages - 1 || Math.abs(i - pageOf.n) <= 1) nums.push(i);
+        else if (nums.at(-1) !== "…") nums.push("…");
+      }
+      wrap.replaceChildren(g, el("div", { className: "pager" },
+        btn("‹", pageOf.n - 1, { disabled: pageOf.n === 0, ariaLabel: "Trang trước" }),
+        ...nums.map((n) => (n === "…" ? el("span", { textContent: "…" }) : btn(String(n + 1), n, { className: n === pageOf.n ? "on" : "" }))),
+        btn("›", pageOf.n + 1, { disabled: pageOf.n >= pages - 1, ariaLabel: "Trang sau" })));
     };
     draw();
     return wrap;
