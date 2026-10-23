@@ -390,6 +390,8 @@
   }
 
   $("settingsBtn").onclick = () => $("settingsDlg").showModal();
+  // Menu shortcuts to the map actions (phones)
+  document.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => { $("settingsDlg").close(); $(b.dataset.go).click(); }));
   $("plansBtn").onclick = () => { renderPlans(); $("plansDlg").showModal(); };
 
   function placeBox(province, spots) {

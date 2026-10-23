@@ -8,7 +8,7 @@
     <link rel="icon" href="brand/favicon.ico" sizes="any" />
     <link rel="icon" href="brand/hp-favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <link rel="stylesheet" href="style.css?v=40" />
+    <link rel="stylesheet" href="style.css?v=41" />
   </head>
   <body>
     <main class="wrap">
@@ -126,9 +126,17 @@
     </dialog>
 
     <!-- Settings (manage mode) -->
-    <dialog id="settingsDlg" class="dlg dlg-sm">
+    <dialog id="settingsDlg" class="dlg dlg-sm dlg-menu">
       <form method="dialog" class="dlg-box">
         <div class="dlg-head"><strong>Cài đặt</strong><button class="icon" value="cancel" aria-label="Đóng">✕</button></div>
+        <!-- On phones the map actions live here too -->
+        <div class="settings-list m-only">
+          <button type="button" data-go="addBtn">+ Thêm ảnh</button>
+          <button type="button" data-go="selectBtn">Chọn nhiều</button>
+          <button type="button" data-go="visitedBtn">Nơi đã đi</button>
+          <button type="button" data-go="plansBtn">Sắp đi</button>
+        </div>
+        <span class="settings-label">Google Drive</span>
         <p class="settings-status"><span class="admin-dot"></span><span id="adminText"></span></p>
         <div class="settings-list">
           <a id="driveLink" class="btn" target="_blank" rel="noopener" hidden>Mở thư mục Drive</a>
@@ -192,6 +200,6 @@
     <script src="vendor/exifr.full.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
-    <script src="app.js?v=50"></script>
+    <script src="app.js?v=51"></script>
   </body>
 </html>
